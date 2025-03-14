@@ -16,14 +16,16 @@ def collate_batches(batch_list):
         k: torch.stack([b.surf_vars[k] for b in batch_list], dim=0)
         for k in batch_list[0].surf_vars.keys()
     }
-    static_vars = {
-        k: torch.stack([b.static_vars[k] for b in batch_list], dim=0)
-        for k in batch_list[0].static_vars.keys()
-    }
+    # static_vars = {
+    #     k: torch.stack([b.static_vars[k] for b in batch_list], dim=0)
+    #     for k in batch_list[0].static_vars.keys()
+    # }
     atmos_vars = {
         k: torch.stack([b.atmos_vars[k] for b in batch_list], dim=0)
         for k in batch_list[0].atmos_vars.keys()
     }
+    # For static_vars, we simply take the one from the first sample.
+    static_vars = batch_list[0].static_vars
     # For metadata, we assume they are the same across samples.
     metadata = batch_list[0].metadata
     return Batch(surf_vars=surf_vars, static_vars=static_vars, atmos_vars=atmos_vars, metadata=metadata)
@@ -35,38 +37,46 @@ def custom_collate_fn(samples):
     targets = default_collate([s["target"] for s in samples])
     return {"batch": collated_batch, "target": targets}
 
-# Toy dataset for finetuning.
 class ToyClimateDataset(Dataset):
-    def __init__(self, num_samples=200, grid_size=(32, 32), new_input_channels=10, num_species=10000):
+    def __init__(self, num_samples=200, new_input_channels=10, num_species=10000):
         self.num_samples = num_samples
-        self.grid_size = grid_size
         self.new_input_channels = new_input_channels
         self.num_species = num_species
+        # Define the metadata grid here.
+        self.lat = torch.linspace(90, -90, 17)  # 17 latitude points
+        self.lon = torch.linspace(0, 360, 33)[:-1]  # 32 longitude points
+        self.metadata = Metadata(
+            lat=self.lat,
+            lon=self.lon,
+            time=(datetime(2020, 6, 1, 12, 0),),
+            atmos_levels=(100, 250, 500, 850),
+        )
+        # Grid dimensions derived from metadata.
+        self.H, self.W = len(self.lat), len(self.lon)
+        print(f"Lat {self.H} Long {self.W}")
+        # We set the history length T to 2 (as required by the Aurora encoder).
+        self.T = 2
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
         # Simulate new input: new finetuning input with new_input_channels.
-        new_input = torch.randn(self.new_input_channels, *self.grid_size)
+        new_input = torch.randn(self.T, self.new_input_channels, self.H, self.W)
         # Construct a minimal Batch. Here, we only populate surf_vars with key "new_input".
         surf_vars = {"new_input": new_input}
-        static_vars = {"dummy": torch.randn(*self.grid_size)}
-        atmos_vars = {}  # empty for simplicity
-        metadata = Metadata(
-            lat=torch.linspace(90, -90, self.grid_size[0]),
-            lon=torch.linspace(0, 360, self.grid_size[1] + 1)[:-1],
-            time=(datetime(2020, 6, 1, 12, 0),),
-            atmos_levels=(100, 250, 500, 850),
-        )
+        static_vars = {k: torch.randn(self.H, self.W) for k in ("lsm", "z", "slt")}
+        atmos_vars = {k: torch.randn(2, 4, self.H, self.W) for k in ("z", "u", "v", "t", "q")}
+        
         batch = Batch(
             surf_vars=surf_vars,
             static_vars=static_vars,
             atmos_vars=atmos_vars,
-            metadata=metadata,
+            metadata=self.metadata,
         )
         # High-dimensional target: shape (num_species, H, W)
-        target = torch.randn(self.num_species, *self.grid_size)
+        target = torch.randn(self.num_species, self.H, self.W)
+
         return {"batch": batch, "target": target}
 
 def finetune_new_variables():
@@ -76,7 +86,7 @@ def finetune_new_variables():
     config = {
         "embed_dim": 256,
     }
-    new_input_channels = 10  # Our new finetuning dataset has 10 channels.
+    new_input_channels = 5  # Our new finetuning dataset has 10 channels.
 
     model = AuroraModified(base_model=base_model, new_input_channels=new_input_channels, use_new_head=True, **config)
     model.to("cuda")
@@ -91,12 +101,11 @@ def finetune_new_variables():
     params_to_optimize = list(model.input_adapter.lora_A.parameters()) + \
                          list(model.input_adapter.lora_B.parameters()) + \
                          list(model.new_head.parameters())
-    optimizer = optim.Adam(params_to_optimize, lr=1e-3)
+    optimizer = optim.AdamW(params_to_optimize, lr=1e-3)
     criterion = nn.MSELoss()
 
-    dataset = ToyClimateDataset(num_samples=200, grid_size=(32, 32),
-                                new_input_channels=new_input_channels, num_species=10000)
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=True, collate_fn=custom_collate_fn)
+    dataset = ToyClimateDataset(num_samples=200, new_input_channels=new_input_channels, num_species=10000)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=custom_collate_fn)
 
     model.train()
     num_epochs = 10
