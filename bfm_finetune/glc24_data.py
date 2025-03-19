@@ -1,3 +1,4 @@
+import importlib
 from glob import glob
 from pathlib import Path
 
@@ -5,9 +6,12 @@ import numpy as np
 import pandas as pd
 import torch
 
+from bfm_finetune import plots
 from bfm_finetune.utils import get_lat_lon_ranges
 
-# finetune_location = Path("/projects/prjs1134/data/projects/biodt/storage/finetune") # snellius
+# finetune_location = Path(
+#     "/projects/prjs1134/data/projects/biodt/storage/finetune"
+# )  # snellius
 finetune_location = Path("data/finetune")  # local
 
 geolifeclef_location = finetune_location / "geolifeclef24"
@@ -40,10 +44,11 @@ df["speciesId"].unique()  # 5016 species
 df["surveyId"].unique()  # 88987 different surveys
 
 # one survey:
-df[df["surveyId"] == 212]  # 15 rows (15 different species?)
+df[df["surveyId"] == 212]
+# 15 rows (15 different species are present, the other ones are absent?)
 
 # one species?
-df[df["speciesId"] == 6874.0]  # 924 rows
+df[df["speciesId"] == 6874.0]  # 924 rows: indicating where it appears (no time filter)
 
 
 # https://lab.plantnet.org/seafile/d/bdb829337aa44a9489f6/files/?p=%2FPresenceOnlyOccurrences%2FReadMe.txt
@@ -64,12 +69,29 @@ step = 0.25
 lat_range, lon_range = get_lat_lon_ranges(lat_step=step, lon_step=step)
 
 df_selected = df[df["speciesId"] == 6874.0]
-df_selected = df_selected[df_selected["year"] == 2021]
+df_selected.groupby("year").surveyId.count()
+# how many each species every year
+# 2017    177
+# 2018    247
+# 2019    128
+# 2020    189
+# 2021    183
+
+df_selected = df_selected[df_selected["year"] == 2018]
+print(len(df_selected))  # 183 appearances in 2021
 # 183 rows
-matrix = np.zeros()
+matrix = np.zeros((len(lat_range), len(lon_range)))
 for lat_i, lat_val in enumerate(lat_range):
     for lon_i, lon_val in enumerate(lon_range):
         df_here = df_selected[
-            df_selected["lat"] >= lat_val - step / 2
-            and df_selected["lat"] < lat_val + step / 2
-        ]  # TODO filter pandas multiple filters
+            (df_selected["lat"] >= lat_val - step / 2)
+            & (df_selected["lat"] < lat_val + step / 2)
+            & (df_selected["lon"] >= lon_val - step / 2)
+            & (df_selected["lon"] < lon_val + step / 2)
+        ]
+        # print(len(df_here))
+        matrix[lat_i, lon_i] = len(df_here)
+
+importlib.reload(plots)
+fig = plots.plot_matrix(lat_range, lon_range, matrix)
+fig.show()
