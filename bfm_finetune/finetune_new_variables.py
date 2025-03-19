@@ -102,16 +102,16 @@ def finetune_new_variables(use_small=True):
         base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt")
         embed_dim = 512
     base_model.to("cuda")
-    config = {
-        "embed_dim": embed_dim,
-    }
+    # config = {
+    #     "embed_dim": embed_dim,
+    # }
     new_input_channels = 5  # Our new finetuning dataset has 10 channels.
 
     model = AuroraModified(
         base_model=base_model,
         new_input_channels=new_input_channels,
         use_new_head=True,
-        **config,
+        # **config,
     )
     model.to("cuda")
 
@@ -131,14 +131,14 @@ def finetune_new_variables(use_small=True):
     criterion = nn.MSELoss()
 
     dataset = ToyClimateDataset(
-        num_samples=200, new_input_channels=new_input_channels, num_species=10000
+        num_samples=10, new_input_channels=new_input_channels, num_species=10000
     )
     dataloader = DataLoader(
         dataset, batch_size=1, shuffle=True, collate_fn=custom_collate_fn
     )
 
     model.train()
-    num_epochs = 10
+    num_epochs = 5
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for sample in dataloader:
@@ -146,8 +146,8 @@ def finetune_new_variables(use_small=True):
             targets = sample["target"].to("cuda")
             optimizer.zero_grad()
             outputs = model(batch)  # outputs: (B, 10000, H, W)
-            print(outputs.shape)
-            print(targets.shape)
+            print(f"output shape {outputs.shape}")
+            print(f"target shape {targets.shape}")
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
