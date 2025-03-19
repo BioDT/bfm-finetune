@@ -50,7 +50,7 @@ class ToyClimateDataset(Dataset):
         self.num_samples = num_samples
         self.new_input_channels = new_input_channels
         self.num_species = num_species
-        # Define the metadata grid here.
+        # Define latitude and longitude grids.
         self.lat = torch.linspace(90, -90, 17)  # 17 latitude points
         self.lon = torch.linspace(0, 360, 33)[:-1]  # 32 longitude points
         self.metadata = Metadata(
@@ -59,34 +59,30 @@ class ToyClimateDataset(Dataset):
             time=(datetime(2020, 6, 1, 12, 0),),
             atmos_levels=(100, 250, 500, 850),
         )
-        # Grid dimensions derived from metadata.
         self.H, self.W = len(self.lat), len(self.lon)
         print(f"Lat {self.H} Long {self.W}")
-        # We set the history length T to 2 (as required by the Aurora encoder).
+        # Set history length T to 2 (as required by the Aurora encoder).
         self.T = 2
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        # Simulate new input: new finetuning input with new_input_channels.
+        # Simulate new finetuning input with shape (T, new_input_channels, H, W).
         new_input = torch.randn(self.T, self.new_input_channels, self.H, self.W)
-        # Construct a minimal Batch. Here, we only populate surf_vars with key "new_input".
         surf_vars = {"new_input": new_input}
         static_vars = {k: torch.randn(self.H, self.W) for k in ("lsm", "z", "slt")}
         atmos_vars = {
             k: torch.randn(2, 4, self.H, self.W) for k in ("z", "u", "v", "t", "q")
         }
-
         batch = Batch(
             surf_vars=surf_vars,
             static_vars=static_vars,
             atmos_vars=atmos_vars,
             metadata=self.metadata,
         )
-        # High-dimensional target: shape (num_species, H, W)
+        # Target: high-dimensional variable with shape (num_species, H, W).
         target = torch.randn(self.num_species, self.H, self.W)
-
         return {"batch": batch, "target": target}
 
 
@@ -105,7 +101,7 @@ def finetune_new_variables(use_small=True):
     # config = {
     #     "embed_dim": embed_dim,
     # }
-    new_input_channels = 5  # Our new finetuning dataset has 10 channels.
+    new_input_channels = 10  # Our new finetuning dataset has 10 channels.
 
     model = AuroraModified(
         base_model=base_model,
@@ -131,14 +127,14 @@ def finetune_new_variables(use_small=True):
     criterion = nn.MSELoss()
 
     dataset = ToyClimateDataset(
-        num_samples=10, new_input_channels=new_input_channels, num_species=10000
+        num_samples=1000, new_input_channels=new_input_channels, num_species=10000
     )
     dataloader = DataLoader(
-        dataset, batch_size=1, shuffle=True, collate_fn=custom_collate_fn
+        dataset, batch_size=128, shuffle=True, collate_fn=custom_collate_fn, num_workers=15
     )
 
     model.train()
-    num_epochs = 5
+    num_epochs = 10
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for sample in dataloader:
@@ -146,8 +142,8 @@ def finetune_new_variables(use_small=True):
             targets = sample["target"].to("cuda")
             optimizer.zero_grad()
             outputs = model(batch)  # outputs: (B, 10000, H, W)
-            print(f"output shape {outputs.shape}")
-            print(f"target shape {targets.shape}")
+            # print(f"output shape {outputs.shape}")
+            # print(f"target shape {targets.shape}")
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()

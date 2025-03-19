@@ -28,7 +28,6 @@ class NewVariableHead(nn.Module):
         elif latent.dim() != 4:
             raise ValueError("Expected latent tensor to be 3D or 4D.")
         
-        # Now latent is (N, C, H_lat, W_lat) with H_lat possibly being 1.
         x = self.out_proj(latent)  # (N, out_channels, H_lat, W_lat)
         # Interpolate spatially to the target size.
         x = F.interpolate(x, size=self.target_size, mode="bilinear", align_corners=False)

@@ -1,7 +1,5 @@
 import contextlib
 import dataclasses
-from functools import partial
-
 import torch
 import torch.nn as nn
 from aurora.batch import Batch
@@ -50,7 +48,7 @@ class AuroraModified(nn.Module):
             # )
             target_size = (17,32)
             self.new_head = NewVariableHead(latent_dim, out_channels=10000, target_size=target_size)
-            self.channel_adapter = ChannelAdapter(in_channels=1, out_channels=latent_dim)
+            # self.channel_adapter = ChannelAdapter(in_channels=1, out_channels=latent_dim)
 
     def forward(self, batch: Batch):
         p = next(self.parameters())
@@ -101,6 +99,7 @@ class AuroraModified(nn.Module):
         )
         
         x = self.base_model.encoder(batch, lead_time=self.base_model.timestep)
+        # print(f"encoder shape {x.shape}")
         with torch.autocast(device_type="cuda") if self.base_model.autocast else contextlib.nullcontext():
             x = self.base_model.backbone(
                 x,
@@ -108,9 +107,10 @@ class AuroraModified(nn.Module):
                 patch_res=patch_res,
                 rollout_step=batch.metadata.rollout_step,
             )
+            # print(f"Backbone shape: {x.shape}")
         if self.use_new_head:
             # Use the channel adapter to map from 1 to 128 channels.
-            x = self.channel_adapter(x)  # Now x has shape [B, 128, H_lat, W_lat]
+            # x = self.channel_adapter(x)  # Now x has shape [B, 128, H_lat, W_lat]
             new_output = self.new_head(x)  # New head expects input of 128 channels.
             return new_output
         else:
@@ -120,4 +120,5 @@ class AuroraModified(nn.Module):
                 lead_time=self.base_model.timestep,
                 patch_res=patch_res,
             )
+            # print(original_output.shape)
             return original_output
