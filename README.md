@@ -2,12 +2,10 @@
 
 ## Install
 
-You can install with poetry or with pip:
+You can install with poetry (plain pip does not respect the specific versions):
 
 ```bash
-# works better
 poetry install
-pip install -e ".[all]"
 ```
 
 If you don't have poetry you can install to the local environment:
@@ -18,6 +16,17 @@ source venv/bin/activate
 pip install poetry
 # and then install
 poetry install
+```
+
+On snellius you need to execute the following first in order to use `python3.11` / `python3.12`:
+
+```bash
+module purge
+# 3.11
+module load 2023 Python/3.11.3-GCCcore-12.3.0
+# or 3.12
+module load 2024 Python/3.12.3-GCCcore-13.3.0
+# then create venv and install poetry and deps (as above)
 ```
 
 ## Experimentation - Work in progress
