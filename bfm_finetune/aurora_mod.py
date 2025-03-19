@@ -4,11 +4,10 @@ from functools import partial
 
 import torch
 import torch.nn as nn
-
 from aurora.batch import Batch
-
 from lora_adapter import LoRAAdapter
 from new_variable_decoder import NewVariableHead
+
 
 class AuroraModified(nn.Module):
     """
@@ -17,7 +16,14 @@ class AuroraModified(nn.Module):
     is high-dimensional (e.g. 10,000 species occurrences). It uses an input adapter (with LoRA)
     to map the new input to the pretrained space and replaces the decoder with a new head.
     """
-    def __init__(self, base_model: nn.Module, new_input_channels: int = 10, use_new_head: bool = True, **kwargs):
+
+    def __init__(
+        self,
+        base_model: nn.Module,
+        new_input_channels: int = 10,
+        use_new_head: bool = True,
+        **kwargs,
+    ):
         """
         Args:
             new_input_channels (int): Number of channels in the new finetuning input.
@@ -41,10 +47,14 @@ class AuroraModified(nn.Module):
             param.requires_grad = False
 
         # The original AuroraSmall expects surf_vars with 4 channels (for "2t", "10u", "10v", "msl").
-        self.expected_input_channels = len(self.base_model.surf_vars) + len(self.base_model.atmos_vars)
+        self.expected_input_channels = len(self.base_model.surf_vars) + len(
+            self.base_model.atmos_vars
+        )
         print("expected vars dim", self.expected_input_channels)
         # Create the new input adapter using LoRA.
-        self.input_adapter = LoRAAdapter(new_input_channels, self.expected_input_channels, rank=4)
+        self.input_adapter = LoRAAdapter(
+            new_input_channels, self.expected_input_channels, rank=4
+        )
 
         self.use_new_head = use_new_head
         if self.use_new_head:
@@ -52,28 +62,34 @@ class AuroraModified(nn.Module):
             latent_dim = kwargs.get("embed_dim", 256)
             # Use the patch_size from the base model to determine upsampling factor.
             upsample_factor = self.base_model.patch_size
-            self.new_head = NewVariableHead(latent_dim=1, out_channels=10000, upsample_factor=upsample_factor)
+            self.new_head = NewVariableHead(
+                latent_dim=1, out_channels=10000, upsample_factor=upsample_factor
+            )
 
     def forward(self, batch: Batch):
         """
         Forward pass for the modified model. Expects that the finetuning Batch contains a new input under
         batch.surf_vars["new_input"] with shape (B, new_input_channels, H, W).
         The rest of the batch (static_vars, atmos_vars, metadata) is used as in the original model.
-            """
+        """
         p = next(self.parameters())
         batch = batch.type(p.dtype)
         batch = batch.to(p.device)
-        
+
         # Extract new input, expected shape: (B, T, new_input_channels, H, W)
         if "new_input" not in batch.surf_vars:
-            raise ValueError("Finetuning input must include 'new_input' in batch.surf_vars.")
+            raise ValueError(
+                "Finetuning input must include 'new_input' in batch.surf_vars."
+            )
         new_input = batch.surf_vars["new_input"]
         # new_input now should have shape (B, T, new_input_channels, H, W)
         B, T, C_new, H, W = new_input.shape
         # Merge batch and time dimensions
         new_input_reshaped = new_input.view(B * T, C_new, H, W)
         # Apply the input adapter (LoRA) to map new_input_channels -> expected_input_channels
-        adapted = self.input_adapter(new_input_reshaped)  # shape: (B*T, expected_input_channels, H, W)
+        adapted = self.input_adapter(
+            new_input_reshaped
+        )  # shape: (B*T, expected_input_channels, H, W)
         # Un-merge to (B, T, expected_input_channels, H, W)
         adapted = adapted.view(B, T, self.expected_input_channels, H, W)
         # Split the adapted tensor into the expected surf variable keys.
@@ -82,20 +98,23 @@ class AuroraModified(nn.Module):
         for i, name in enumerate(var_names):
             # Extract the i-th channel for each time step and remove the channel dimension.
             # Resulting shape: (B, T, H, W)
-            new_surf_vars[name] = adapted[:, :, i:i+1, :, :].squeeze(2)
+            new_surf_vars[name] = adapted[:, :, i : i + 1, :, :].squeeze(2)
         # Replace the original surf_vars with our new ones.
         batch = dataclasses.replace(batch, surf_vars=new_surf_vars)
-        
+
         # Now, normalization expects surf_vars to have shape (B, T, H, W)
         batch = batch.normalise(surf_stats=self.base_model.surf_stats)
         batch = batch.crop(patch_size=self.base_model.patch_size)
-        
+
         # Expand static_vars appropriately.
         B, T = next(iter(batch.surf_vars.values())).shape[:2]
 
         batch = dataclasses.replace(
             batch,
-            static_vars={k: v.unsqueeze(0).unsqueeze(0).expand(B, T, *v.shape) for k, v in batch.static_vars.items()},
+            static_vars={
+                k: v.unsqueeze(0).unsqueeze(0).expand(B, T, *v.shape)
+                for k, v in batch.static_vars.items()
+            },
         )
 
         # expanded_static = {}
@@ -124,9 +143,13 @@ class AuroraModified(nn.Module):
             H // self.base_model.encoder.patch_size,
             W // self.base_model.encoder.patch_size,
         )
-        
+
         x = self.base_model.encoder(batch, lead_time=self.base_model.timestep)
-        with torch.autocast(device_type="cuda") if self.base_model.autocast else contextlib.nullcontext():
+        with (
+            torch.autocast(device_type="cuda")
+            if self.base_model.autocast
+            else contextlib.nullcontext()
+        ):
             x = self.base_model.backbone(
                 x,
                 lead_time=self.base_model.timestep,
@@ -145,8 +168,9 @@ class AuroraModified(nn.Module):
             )
             return original_output
 
+
 # For reference, AuroraSmall is defined as in the original script:
-AuroraSmall = partial(#
+AuroraSmall = partial(  #
     AuroraModified,
     encoder_depths=(2, 6, 2),
     encoder_num_heads=(4, 8, 16),

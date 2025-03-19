@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class LoRAAdapter(nn.Module):
     def __init__(self, in_channels, out_channels, rank=4):
         """
@@ -13,11 +14,11 @@ class LoRAAdapter(nn.Module):
         self.base_mapping = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         for param in self.base_mapping.parameters():
             param.requires_grad = False
-        
+
         # LoRA parameters: low-rank factors.
         self.lora_A = nn.Conv2d(in_channels, rank, kernel_size=1, bias=False)
         self.lora_B = nn.Conv2d(rank, out_channels, kernel_size=1, bias=False)
-        
+
     def forward(self, x):
         # If x is 5D (B, T, C, H, W), merge batch and time.
         if x.dim() == 5:

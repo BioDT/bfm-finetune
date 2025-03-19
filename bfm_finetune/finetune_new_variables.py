@@ -1,13 +1,14 @@
+from datetime import datetime
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, default_collate
-from datetime import datetime
-
-from aurora_mod import AuroraModified
+from aurora import Aurora, AuroraSmall
 from aurora.batch import Batch, Metadata
+from torch.utils.data import DataLoader, Dataset, default_collate
 
-from aurora import AuroraSmall
+from bfm_finetune.aurora_mod import AuroraModified
+
 
 # Custom collate function to merge a list of Batch objects.
 def collate_batches(batch_list):
@@ -28,7 +29,13 @@ def collate_batches(batch_list):
     static_vars = batch_list[0].static_vars
     # For metadata, we assume they are the same across samples.
     metadata = batch_list[0].metadata
-    return Batch(surf_vars=surf_vars, static_vars=static_vars, atmos_vars=atmos_vars, metadata=metadata)
+    return Batch(
+        surf_vars=surf_vars,
+        static_vars=static_vars,
+        atmos_vars=atmos_vars,
+        metadata=metadata,
+    )
+
 
 def custom_collate_fn(samples):
     # Each sample is a dict with keys "batch" and "target".
@@ -36,6 +43,7 @@ def custom_collate_fn(samples):
     collated_batch = collate_batches(batch_list)
     targets = default_collate([s["target"] for s in samples])
     return {"batch": collated_batch, "target": targets}
+
 
 class ToyClimateDataset(Dataset):
     def __init__(self, num_samples=200, new_input_channels=10, num_species=10000):
@@ -66,8 +74,10 @@ class ToyClimateDataset(Dataset):
         # Construct a minimal Batch. Here, we only populate surf_vars with key "new_input".
         surf_vars = {"new_input": new_input}
         static_vars = {k: torch.randn(self.H, self.W) for k in ("lsm", "z", "slt")}
-        atmos_vars = {k: torch.randn(2, 4, self.H, self.W) for k in ("z", "u", "v", "t", "q")}
-        
+        atmos_vars = {
+            k: torch.randn(2, 4, self.H, self.W) for k in ("z", "u", "v", "t", "q")
+        }
+
         batch = Batch(
             surf_vars=surf_vars,
             static_vars=static_vars,
@@ -79,18 +89,32 @@ class ToyClimateDataset(Dataset):
 
         return {"batch": batch, "target": target}
 
-def finetune_new_variables():
-    base_model = AuroraSmall()
-    base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-small-pretrained.ckpt")
+
+def finetune_new_variables(use_small=True):
+    if use_small:
+        base_model = AuroraSmall()
+        base_model.load_checkpoint(
+            "microsoft/aurora", "aurora-0.25-small-pretrained.ckpt"
+        )
+        embed_dim = 256
+    else:
+        base_model = AuroraSmall()
+        base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt")
+        embed_dim = 512
     base_model.to("cuda")
     config = {
-        "embed_dim": 256,
+        "embed_dim": embed_dim,
     }
     new_input_channels = 5  # Our new finetuning dataset has 10 channels.
 
-    model = AuroraModified(base_model=base_model, new_input_channels=new_input_channels, use_new_head=True, **config)
+    model = AuroraModified(
+        base_model=base_model,
+        new_input_channels=new_input_channels,
+        use_new_head=True,
+        **config,
+    )
     model.to("cuda")
-    
+
     # Freeze all pretrained parts. We already froze base_model inside AuroraModified.
     # Ensure that in the input adapter, only the LoRA parameters are trainable.
     for name, param in model.input_adapter.named_parameters():
@@ -98,14 +122,20 @@ def finetune_new_variables():
             param.requires_grad = False
 
     # Optimizer on the LoRA adapter parameters and new head.
-    params_to_optimize = list(model.input_adapter.lora_A.parameters()) + \
-                         list(model.input_adapter.lora_B.parameters()) + \
-                         list(model.new_head.parameters())
+    params_to_optimize = (
+        list(model.input_adapter.lora_A.parameters())
+        + list(model.input_adapter.lora_B.parameters())
+        + list(model.new_head.parameters())
+    )
     optimizer = optim.AdamW(params_to_optimize, lr=1e-3)
     criterion = nn.MSELoss()
 
-    dataset = ToyClimateDataset(num_samples=200, new_input_channels=new_input_channels, num_species=10000)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=custom_collate_fn)
+    dataset = ToyClimateDataset(
+        num_samples=200, new_input_channels=new_input_channels, num_species=10000
+    )
+    dataloader = DataLoader(
+        dataset, batch_size=1, shuffle=True, collate_fn=custom_collate_fn
+    )
 
     model.train()
     num_epochs = 10
@@ -116,11 +146,14 @@ def finetune_new_variables():
             targets = sample["target"].to("cuda")
             optimizer.zero_grad()
             outputs = model(batch)  # outputs: (B, 10000, H, W)
+            print(outputs.shape)
+            print(targets.shape)
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(dataloader):.4f}")
+
 
 if __name__ == "__main__":
     finetune_new_variables()
