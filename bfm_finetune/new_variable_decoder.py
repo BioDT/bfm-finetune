@@ -6,7 +6,7 @@ class NewVariableHead(nn.Module):
     def __init__(self, latent_dim, out_channels=10000, target_size=(17, 32)):
         """
         Projects the latent representation to the desired output.
-        
+
         Args:
             latent_dim (int): Number of input channels (should match backbone output channels).
             out_channels (int): Desired number of output channels.
@@ -27,8 +27,10 @@ class NewVariableHead(nn.Module):
             latent = latent.unsqueeze(2)
         elif latent.dim() != 4:
             raise ValueError("Expected latent tensor to be 3D or 4D.")
-        
+
         x = self.out_proj(latent)  # (N, out_channels, H_lat, W_lat)
         # Interpolate spatially to the target size.
-        x = F.interpolate(x, size=self.target_size, mode="bilinear", align_corners=False)
+        x = F.interpolate(
+            x, size=self.target_size, mode="bilinear", align_corners=False
+        )
         return x

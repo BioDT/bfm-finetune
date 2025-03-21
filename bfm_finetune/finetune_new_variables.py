@@ -130,7 +130,11 @@ def finetune_new_variables(use_small=True):
         num_samples=1000, new_input_channels=new_input_channels, num_species=10000
     )
     dataloader = DataLoader(
-        dataset, batch_size=128, shuffle=True, collate_fn=custom_collate_fn, num_workers=15
+        dataset,
+        batch_size=128,
+        shuffle=True,
+        collate_fn=custom_collate_fn,
+        num_workers=15,
     )
 
     model.train()
