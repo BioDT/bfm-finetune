@@ -50,7 +50,7 @@ def aggregate_into_latlon_grid(
     lat_range_list = lat_range.tolist()
     lon_range_list = lon_range.tolist()
     # faster loop
-    for index, row in tqdm(df.iterrows()):
+    for index, row in df.iterrows():
         lat = row["lat"]
         lon = row["lon"]
         lat_i = next(i for i, val in enumerate(lat_range_list) if val <= lat + step / 2)
