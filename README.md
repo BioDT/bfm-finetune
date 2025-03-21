@@ -29,6 +29,15 @@ module load 2024 Python/3.12.3-GCCcore-13.3.0
 # then create venv and install poetry and deps (as above)
 ```
 
+## File formatting - pre-commit
+
+To keep the code clean, `pre-commit` is installed as dev dependency. In this way, every time before a commit, the files modified will be formatted.
+You can manually run the command on all the files (even if not modified) with:
+
+```bash
+pre-commit run --all-files
+```
+
 ## Experimentation - Work in progress
 
 An intro script with a toy example, using the small Aurora model and finetuning with the below logic is `finetune_new_variables.py`.
