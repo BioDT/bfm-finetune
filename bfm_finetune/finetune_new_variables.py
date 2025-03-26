@@ -14,6 +14,7 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def finetune_new_variables(use_small=True, use_toy=True):
     if use_small:
@@ -26,7 +27,7 @@ def finetune_new_variables(use_small=True, use_toy=True):
         base_model = AuroraSmall()
         base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt")
         embed_dim = 512
-    base_model.to("cuda")
+    base_model.to(device)
     # config = {
     #     "embed_dim": embed_dim,
     # }
@@ -38,7 +39,7 @@ def finetune_new_variables(use_small=True, use_toy=True):
         use_new_head=True,
         # **config,
     )
-    model.to("cuda")
+    model.to(device)
 
     # Freeze all pretrained parts. We already froze base_model inside AuroraModified.
     # Ensure that in the input adapter, only the LoRA parameters are trainable.
@@ -75,7 +76,7 @@ def finetune_new_variables(use_small=True, use_toy=True):
         epoch_loss = 0.0
         for sample in dataloader:
             batch = sample["batch"]
-            targets = sample["target"].to("cuda")
+            targets = sample["target"].to(device)
             optimizer.zero_grad()
             outputs = model(batch)  # outputs: (B, 10000, H, W)
             # print(f"output shape {outputs.shape}")
