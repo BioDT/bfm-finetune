@@ -16,6 +16,7 @@ from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def finetune_new_variables(use_small=True, use_toy=True):
     if use_small:
         base_model = AuroraSmall()
@@ -31,12 +32,16 @@ def finetune_new_variables(use_small=True, use_toy=True):
     # config = {
     #     "embed_dim": embed_dim,
     # }
-    new_input_channels = 10  # Our new finetuning dataset has 10 channels.
+    num_species = 500  # Our new finetuning dataset has 10 channels.
+    geo_size = (152, 320)  # BREAKS
+    geo_size = (17, 32)  # WORKS
+    batch_size = 128  # 2
 
     model = AuroraModified(
         base_model=base_model,
-        new_input_channels=new_input_channels,
+        new_input_channels=num_species,
         use_new_head=True,
+        target_size=geo_size,
         # **config,
     )
     model.to(device)
@@ -58,13 +63,16 @@ def finetune_new_variables(use_small=True, use_toy=True):
 
     if use_toy:
         dataset = ToyClimateDataset(
-            num_samples=1000, new_input_channels=new_input_channels, num_species=10000
+            num_samples=1000,
+            new_input_channels=num_species,
+            num_species=num_species,
+            geo_size=geo_size,
         )
     else:
-        dataset = GeoLifeCLEFSpeciesDataset(num_species=500)
+        dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species)
     dataloader = DataLoader(
         dataset,
-        batch_size=128,
+        batch_size=batch_size,
         shuffle=True,
         collate_fn=custom_collate_fn,
         num_workers=15,
@@ -90,3 +98,4 @@ def finetune_new_variables(use_small=True, use_toy=True):
 
 if __name__ == "__main__":
     finetune_new_variables(use_toy=True)
+    # finetune_new_variables(use_toy=False)

@@ -29,7 +29,7 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
         data = torch.load(fpath, map_location="cpu", weights_only=True)
         lat = data["metadata"]["lat"]
         lon = data["metadata"]["lon"]
-        print(lon)
+        # print(lon)
         metadata = Metadata(
             lat=torch.Tensor(lat),
             lon=torch.Tensor(lon),

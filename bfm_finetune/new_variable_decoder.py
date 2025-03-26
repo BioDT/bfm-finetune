@@ -1,9 +1,16 @@
+from typing import Tuple
+
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class NewVariableHead(nn.Module):
-    def __init__(self, latent_dim, out_channels=10000, target_size=(17, 32)):
+    def __init__(
+        self,
+        latent_dim,
+        out_channels: int,
+        target_size=Tuple[int],
+    ):
         """
         Projects the latent representation to the desired output.
 

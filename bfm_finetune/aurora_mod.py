@@ -1,5 +1,6 @@
 import contextlib
 import dataclasses
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -20,7 +21,11 @@ class ChannelAdapter(nn.Module):
 
 class AuroraModified(nn.Module):
     def __init__(
-        self, base_model: nn.Module, new_input_channels: int, use_new_head: bool = True
+        self,
+        base_model: nn.Module,
+        new_input_channels: int,
+        target_size: Tuple[int],
+        use_new_head: bool = True,
     ):
         """
         Wraps a pretrained Aurora model (e.g. AuroraSmall) to adapt a new input with different channels
@@ -53,9 +58,9 @@ class AuroraModified(nn.Module):
             #     int(self.base_model.metadata.lat.shape[0]),
             #     int(self.base_model.metadata.lon.shape[0])
             # )
-            target_size = (17, 32)
+            target_size = target_size
             self.new_head = NewVariableHead(
-                latent_dim, out_channels=10000, target_size=target_size
+                latent_dim, out_channels=new_input_channels, target_size=target_size
             )
             # self.channel_adapter = ChannelAdapter(in_channels=1, out_channels=latent_dim)
 
@@ -70,6 +75,7 @@ class AuroraModified(nn.Module):
                 "Finetuning input must include 'species_distribution' in batch.surf_vars."
             )
         new_input = batch.surf_vars["species_distribution"]
+        print("new_input.shape", new_input.shape)
         # Allow for optional time dimension.
         if new_input.dim() == 4:
             new_input = new_input.unsqueeze(1)  # (B, 1, C, H, W)

@@ -10,6 +10,7 @@ def get_lat_lon_ranges(
     max_lat: float = 72.0,
     lon_step: float = 0.25,
     lat_step: float = 0.25,
+    crop_multiple: int = 4,
     lon_positive: bool = False,
 ):
     """
@@ -29,6 +30,12 @@ def get_lat_lon_ranges(
     lon_range = np.arange(min_lon, max_lon + lon_step, lon_step)
     # reverse lat_range to go from North to South
     lat_range = lat_range[::-1]
+    # make it compatible with patch_size
+    if crop_multiple != 1:
+        lat_cnt = lat_range.shape[0] // crop_multiple * crop_multiple
+        lat_range = lat_range[:lat_cnt]
+        lon_cnt = lon_range.shape[0] // crop_multiple * crop_multiple
+        lon_range = lon_range[:lon_cnt]
 
     if lon_positive:
         # negative longitudes are +360 and rotated at the end to have sorted lon
