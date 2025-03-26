@@ -132,7 +132,7 @@ class Decoder(nn.Module):
 
 
 class NewModalityEncoder(nn.Module):
-    def __init__(self, species_channels: int = 500, target_spatial: Tuple[int, int] = (152, 320)):
+    def __init__(self, species_channels: int = 500, hidden_channels: int = 160, target_spatial: Tuple[int, int] = (152, 320)):
         """
         Args:
             species_channels: Number of channels in the new modality (S=500).
@@ -144,10 +144,10 @@ class NewModalityEncoder(nn.Module):
         # A two-layer convolutional network to map 500 species channels -> 4 channels.
         # Using kernel size 3 and padding=1 preserves spatial dimensions.
         self.adapter = nn.Sequential(
-            nn.Conv2d(species_channels, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(species_channels, hidden_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(hidden_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 4, kernel_size=3, padding=1)
+            nn.Conv2d(hidden_channels, 4, kernel_size=3, padding=1)
         )
 
     def forward(self, x: torch.Tensor) -> Batch:

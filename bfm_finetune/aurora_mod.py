@@ -154,6 +154,7 @@ class AuroraExtend(nn.Module):
     def __init__(
         self,
         base_model: nn.Module,
+        latent_dim: int,
         in_channels: int = 1000, # 2 x 500
         hidden_channels: int = 160,
         out_channels: int = 500
@@ -164,12 +165,13 @@ class AuroraExtend(nn.Module):
         """
         super().__init__()
         self.base_model = base_model  # Pre-instantiated AuroraSmall model.
+        self.latent_dim = latent_dim
         self.in_channels = in_channels
-        self.hidde_channels = hidden_channels
+        self.hidden_channels = hidden_channels
         self.out_channels = out_channels
 
-        self.encoder = NewModalityEncoder(self.in_channels, self.hidde_channels)
-        self.decoder = VectorDecoder(self.out_channels, self.hidde_channels)
+        self.encoder = NewModalityEncoder(self.in_channels, self.hidden_channels)
+        self.decoder = VectorDecoder(self.latent_dim, self.out_channels, self.hidden_channels)
 
         # Freeze pretrained parts.
         for param in self.base_model.encoder.parameters():
@@ -180,12 +182,12 @@ class AuroraExtend(nn.Module):
             param.requires_grad = False
 
     def forward(self, batch):
-        p = next(self.parameters())
-        batch = batch.type(p.dtype)
-        batch = batch.to(p.device) # Bach here has T=2
+        # p = next(self.parameters())
+        # batch = batch.type(p.dtype)
+        # batch = batch.to(p.device) # Bach here has T=2
         # TODO Adapt the dataset to provide only the new variable
-        x = batch.surface_vars["species_distribution"]
-
+        # x = batch.surface_vars["species_distribution"]
+        x = batch
         # Encode input
         encoded_input = self.encoder(x)
 
@@ -193,6 +195,6 @@ class AuroraExtend(nn.Module):
         aurora_output = self.base_model(encoded_input)
 
         # Decode Aurora output
-        decoded_aurora = self.decoder()
+        decoded_aurora = self.decoder(aurora_output)
 
         return decoded_aurora
