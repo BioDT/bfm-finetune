@@ -65,11 +65,11 @@ class AuroraModified(nn.Module):
         batch = batch.to(p.device)
 
         # Adapt the new input.
-        if "new_input" not in batch.surf_vars:
+        if "species_distribution" not in batch.surf_vars:
             raise ValueError(
                 "Finetuning input must include 'new_input' in batch.surf_vars."
             )
-        new_input = batch.surf_vars["new_input"]
+        new_input = batch.surf_vars["species_distribution"]
         # Allow for optional time dimension.
         if new_input.dim() == 4:
             new_input = new_input.unsqueeze(1)  # (B, 1, C, H, W)

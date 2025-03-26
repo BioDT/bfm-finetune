@@ -9,22 +9,17 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from bfm_finetune import paths, plots
+from bfm_finetune.dataloaders.geolifeclef_species import utils
 from bfm_finetune.utils import (
     aggregate_into_latlon_grid,
     get_lat_lon_ranges,
-    unroll_matrix_into_df,
 )
-
-finetune_location = paths.STORAGE_DIR / "finetune"
-geolifeclef_location = finetune_location / "geolifeclef24"
-aurorashape_species_location = geolifeclef_location / "aurorashape_species"
 
 
 def load_pa_csv() -> pd.DataFrame:
     # https://lab.plantnet.org/seafile/d/bdb829337aa44a9489f6/files/?p=%2FPresenceAbsenceSurveys%2FReadMe.txt
     # presence-absence: in europe
-    pa_path = geolifeclef_location / "GLC24_PA_metadata_train.csv"
+    pa_path = utils.geolifeclef_location / "GLC24_PA_metadata_train.csv"
     df = pd.read_csv(pa_path)
     return df
 
@@ -68,6 +63,7 @@ if __name__ == "__main__":
 
     step = 0.25
     lat_range, lon_range = get_lat_lon_ranges(lat_step=step, lon_step=step)
+    # df.loc[df["lon"] < 0.0, "lon"] += 360.0
 
     species_matrix = get_matrix_for_species(
         df=df,
@@ -77,6 +73,14 @@ if __name__ == "__main__":
         lon_range=lon_range,
         step=step,
     )
+    # now put lon+360
+    lon_neg_loc = np.where(lon_range < 0)[0]
+    max_neg = lon_neg_loc.max()
+    print("max_neg", max_neg)
+    lon_range[: max_neg + 1] += 360
+    lon_range = np.roll(lon_range, shift=-(max_neg + 1))
+    species_matrix = np.roll(species_matrix, shift=-(max_neg + 1), axis=3)
+    # and update matrix columns (swap) TODO:
     print("shape", species_matrix.shape)
     paired_years_indices = [
         (i, i + 1)
@@ -84,20 +88,20 @@ if __name__ == "__main__":
         for i in range(len(years) - 1)
     ]
     print("year pairs", paired_years_indices)
-    os.makedirs(aurorashape_species_location, exist_ok=True)
+    os.makedirs(utils.aurorashape_species_location, exist_ok=True)
     count = 0
     for year1_index, year2_index in tqdm(paired_years_indices, desc="Saving batches"):
         year_1 = years[year1_index]
         year_2 = years[year2_index]
         file_path = (
-            aurorashape_species_location / f"yearly_species_{year_1}-{year_2}.pt"
+            utils.aurorashape_species_location / f"yearly_species_{year_1}-{year_2}.pt"
         )
-        filtered_matrix = species_matrix[:, [year1_index, year2_index], :, :]
+        filtered_matrix = species_matrix[[year1_index, year2_index], :, :, :]
         batch_structure = {
-            "species_vars": torch.Tensor(filtered_matrix),
+            "species_distribution": torch.Tensor(filtered_matrix),
             "metadata": {
-                "lat": lat_range,
-                "lon": lon_range,
+                "lat": lat_range.tolist(),
+                "lon": lon_range.tolist(),
                 "time": [year_1, year_2],  # TODO: this is only year now
                 "species_ids": species_ids,
             },

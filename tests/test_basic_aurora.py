@@ -4,6 +4,8 @@ import pytest
 import torch
 from aurora import Aurora, AuroraSmall, Batch, Metadata, rollout
 
+from tests.utils import requires_gpu
+
 LAT_RES = 16  # pick a number that is multiple of patch_size (default 4)
 LATITUDES = torch.linspace(90, -90, LAT_RES)
 LON_RES = 32  # pick a number that is multiple of patch_size (default 4)
@@ -81,18 +83,22 @@ def aurora_model_big():
 # now the "test_*" functions that are called automatically by pytest
 
 
+@requires_gpu()
 def test_load_and_random_prediction_small(aurora_model_small):
     do_test_forward(aurora_model_small, batch)
 
 
+@requires_gpu()
 def test_load_and_random_prediction_big(aurora_model_big):
     do_test_forward(aurora_model_big, batch)
 
 
+@requires_gpu()
 def test_rollout_small(aurora_model_small):
     do_test_rollout(aurora_model_small, batch)
 
 
+@requires_gpu()
 def test_rollout_big(aurora_model_big):
     do_test_rollout(aurora_model_big, batch)
 

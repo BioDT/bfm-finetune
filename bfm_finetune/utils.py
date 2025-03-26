@@ -10,6 +10,7 @@ def get_lat_lon_ranges(
     max_lat: float = 72.0,
     lon_step: float = 0.25,
     lat_step: float = 0.25,
+    lon_positive: bool = False,
 ):
     """
     Get latitude and longitude ranges.
@@ -28,6 +29,11 @@ def get_lat_lon_ranges(
     lon_range = np.arange(min_lon, max_lon + lon_step, lon_step)
     # reverse lat_range to go from North to South
     lat_range = lat_range[::-1]
+
+    if lon_positive:
+        # negative longitudes are +360 and rotated at the end to have sorted lon
+        lon_range[lon_range < 0] += 360.0
+        lon_range.sort()
 
     return lat_range, lon_range
 
