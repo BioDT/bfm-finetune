@@ -9,8 +9,8 @@ from torch.utils.data import Dataset
 class ToyClimateDataset(Dataset):
     def __init__(
         self,
-        geo_size=Tuple[int],
-        num_samples=200,
+        geo_size: Tuple[int, int],
+        num_samples=10,
         new_input_channels=10,
         num_species=10000,
     ):
@@ -18,7 +18,9 @@ class ToyClimateDataset(Dataset):
         self.new_input_channels = new_input_channels
         self.num_species = num_species
         # Define latitude and longitude grids.
-        self.lat = torch.linspace(90, -90, geo_size[0])  # 17 latitude points
+        self.lat = torch.linspace(
+            start=90, end=-90, steps=geo_size[0]
+        )  # 17 latitude points
         self.lon = torch.linspace(0, 360, geo_size[1] + 1)[:-1]  # 32 longitude points
         self.metadata = Metadata(
             lat=self.lat,
@@ -35,6 +37,7 @@ class ToyClimateDataset(Dataset):
         return self.num_samples
 
     def __getitem__(self, idx):
+        # print(f"__getitem__{idx}")
         # Simulate new finetuning input with shape (T, new_input_channels, H, W).
         new_input = torch.randn(self.T, self.new_input_channels, self.H, self.W)
         surf_vars = {"species_distribution": new_input}

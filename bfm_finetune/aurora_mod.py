@@ -24,7 +24,7 @@ class AuroraModified(nn.Module):
         self,
         base_model: nn.Module,
         new_input_channels: int,
-        target_size: Tuple[int],
+        target_size: Tuple[int, int],
         use_new_head: bool = True,
     ):
         """
@@ -33,7 +33,7 @@ class AuroraModified(nn.Module):
         """
         super().__init__()
         self.base_model = base_model  # Pre-instantiated AuroraSmall model.
-        self.new_input_channels = new_input_channels
+        self.new_input_channels = new_input_channels  # 500
         self.use_new_head = use_new_head
 
         # Freeze pretrained parts.
@@ -52,7 +52,10 @@ class AuroraModified(nn.Module):
 
         if self.use_new_head:
             # The backbone returns that
-            latent_dim = 128
+            # latent_dim = 128  # 17x32
+            # latent_dim = 12160  # (152, 320)
+            latent_dim = target_size[0] * target_size[1] // self.base_model.patch_size
+            # print("latent_dim", latent_dim)
             # Determine the target spatial size from the metadata.
             # target_size = (
             #     int(self.base_model.metadata.lat.shape[0]),
@@ -75,7 +78,7 @@ class AuroraModified(nn.Module):
                 "Finetuning input must include 'species_distribution' in batch.surf_vars."
             )
         new_input = batch.surf_vars["species_distribution"]
-        print("new_input.shape", new_input.shape)
+        # print("new_input.shape", new_input.shape)
         # Allow for optional time dimension.
         if new_input.dim() == 4:
             new_input = new_input.unsqueeze(1)  # (B, 1, C, H, W)

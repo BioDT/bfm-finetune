@@ -6,6 +6,7 @@ import torch.optim as optim
 from aurora import Aurora, AuroraSmall
 from aurora.batch import Batch, Metadata
 from torch.utils.data import DataLoader, Dataset, default_collate
+from tqdm import tqdm
 
 from bfm_finetune.aurora_mod import AuroraModified
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
@@ -33,9 +34,8 @@ def finetune_new_variables(use_small=True, use_toy=True):
     #     "embed_dim": embed_dim,
     # }
     num_species = 500  # Our new finetuning dataset has 10 channels.
-    geo_size = (152, 320)  # BREAKS
-    geo_size = (17, 32)  # WORKS
-    batch_size = 128  # 2
+    geo_size = (16, 32) if use_toy else (152, 320)
+    batch_size = 128 if use_toy else 2
 
     model = AuroraModified(
         base_model=base_model,
@@ -82,7 +82,8 @@ def finetune_new_variables(use_small=True, use_toy=True):
     num_epochs = 10
     for epoch in range(num_epochs):
         epoch_loss = 0.0
-        for sample in dataloader:
+        for sample in tqdm(dataloader):
+            # print("sample")
             batch = sample["batch"]
             targets = sample["target"].to(device)
             optimizer.zero_grad()
@@ -97,5 +98,5 @@ def finetune_new_variables(use_small=True, use_toy=True):
 
 
 if __name__ == "__main__":
-    finetune_new_variables(use_toy=True)
-    # finetune_new_variables(use_toy=False)
+    # finetune_new_variables(use_toy=True)
+    finetune_new_variables(use_toy=False)
