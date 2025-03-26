@@ -30,7 +30,7 @@ class ToyClimateDataset(Dataset):
     def __getitem__(self, idx):
         # Simulate new finetuning input with shape (T, new_input_channels, H, W).
         new_input = torch.randn(self.T, self.new_input_channels, self.H, self.W)
-        surf_vars = {"new_input": new_input}
+        surf_vars = {"species_distribution": new_input}
         static_vars = {k: torch.randn(self.H, self.W) for k in ("lsm", "z", "slt")}
         atmos_vars = {
             k: torch.randn(2, 4, self.H, self.W) for k in ("z", "u", "v", "t", "q")

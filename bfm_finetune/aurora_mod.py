@@ -67,7 +67,7 @@ class AuroraModified(nn.Module):
         # Adapt the new input.
         if "species_distribution" not in batch.surf_vars:
             raise ValueError(
-                "Finetuning input must include 'new_input' in batch.surf_vars."
+                "Finetuning input must include 'species_distribution' in batch.surf_vars."
             )
         new_input = batch.surf_vars["species_distribution"]
         # Allow for optional time dimension.
