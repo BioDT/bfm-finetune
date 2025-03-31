@@ -7,14 +7,14 @@ from aurora import Aurora, AuroraSmall
 from aurora.batch import Batch, Metadata
 from torch.utils.data import DataLoader, Dataset, default_collate
 
-from bfm_finetune.aurora_mod import AuroraModified
+from bfm_finetune.aurora_mod import AuroraModified, AuroraExtend
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
 from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 def finetune_new_variables(use_small=True, use_toy=True):
@@ -32,33 +32,45 @@ def finetune_new_variables(use_small=True, use_toy=True):
     # config = {
     #     "embed_dim": embed_dim,
     # }
-    num_species = 500  # Our new finetuning dataset has 10 channels.
+    num_species = 1000  # Our new finetuning dataset has 10 channels.
     geo_size = (152, 320)  # BREAKS
-    geo_size = (17, 32)  # WORKS
-    batch_size = 128  # 2
+    # geo_size = (17, 32)  # WORKS
+    batch_size = 2  # 2
 
-    model = AuroraModified(
-        base_model=base_model,
-        new_input_channels=num_species,
-        use_new_head=True,
-        target_size=geo_size,
-        # **config,
-    )
+    #######   V1
+    # model = AuroraModified(
+    #     base_model=base_model,
+    #     new_input_channels=num_species,
+    #     use_new_head=True,
+    #     target_size=geo_size,
+    #     # **config,
+    # )
+
+    # # Freeze all pretrained parts. We already froze base_model inside AuroraModified.
+    # # Ensure that in the input adapter, only the LoRA parameters are trainable.
+    # for name, param in model.input_adapter.named_parameters():
+    #     if "lora_A" not in name and "lora_B" not in name:
+    #         param.requires_grad = False
+
+    # # Optimizer on the LoRA adapter parameters and new head.
+    # params_to_optimize = (
+    #     list(model.input_adapter.lora_A.parameters())
+    #     + list(model.input_adapter.lora_B.parameters())
+    #     + list(model.new_head.parameters())
+    # )
+
+    ####### V2
+    species_channels = 1000
+    latent_dim = 12160
+    model = AuroraExtend(base_model=base_model,
+                         latent_dim=latent_dim,
+                         in_channels=species_channels,
+                         hidden_channels=256,
+                         out_channels=species_channels)
     model.to(device)
 
-    # Freeze all pretrained parts. We already froze base_model inside AuroraModified.
-    # Ensure that in the input adapter, only the LoRA parameters are trainable.
-    for name, param in model.input_adapter.named_parameters():
-        if "lora_A" not in name and "lora_B" not in name:
-            param.requires_grad = False
-
-    # Optimizer on the LoRA adapter parameters and new head.
-    params_to_optimize = (
-        list(model.input_adapter.lora_A.parameters())
-        + list(model.input_adapter.lora_B.parameters())
-        + list(model.new_head.parameters())
-    )
-    optimizer = optim.AdamW(params_to_optimize, lr=1e-3)
+    
+    optimizer = optim.AdamW(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
 
     if use_toy:
@@ -83,12 +95,12 @@ def finetune_new_variables(use_small=True, use_toy=True):
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for sample in dataloader:
-            batch = sample["batch"]
+            batch = sample["batch"].to(device)
             targets = sample["target"].to(device)
             optimizer.zero_grad()
             outputs = model(batch)  # outputs: (B, 10000, H, W)
-            # print(f"output shape {outputs.shape}")
-            # print(f"target shape {targets.shape}")
+            print(f"output shape {outputs.shape}")
+            print(f"target shape {targets.shape}")
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()

@@ -150,7 +150,7 @@ class NewModalityEncoder(nn.Module):
             nn.Conv2d(hidden_channels, 4, kernel_size=3, padding=1)
         )
 
-    def forward(self, x: torch.Tensor) -> Batch:
+    def forward(self, batch: torch.Tensor) -> Batch:
         """
         Args:
             x: Input tensor with shape [B, T, S, H, W] where
@@ -163,7 +163,15 @@ class NewModalityEncoder(nn.Module):
               - atmos_vars: keys "z", "u", "v", "t", "q" each of shape [B, T, 4, H_target, W_target] (defaulted to zeros)
               - metadata: Contains spatial coordinates and other info.
         """
-        B, T, C, H, W = x.shape  # C=500 #num_species
+        # Expect the new modality variable to be stored under "species_distribution" in surf_vars.
+        if "species_distribution" not in batch.surf_vars:
+            raise ValueError("Input Batch must contain 'species_distribution' in surf_vars.")
+        
+        x = batch.surf_vars["species_distribution"]  # Expected shape: [B, T, 500, H, W]
+        B, T, C, H, W = x.shape  # Here, C should equal species_channels (500).
+        
+
+        # B, T, C, H, W = x.shape  # C=500 #num_species
         # Merge batch and time dims for per-frame processing.
         x_reshaped = x.view(B * T, C, H, W)  # [B*T, 500, 152, 320]
         
@@ -181,7 +189,7 @@ class NewModalityEncoder(nn.Module):
         keys = ("2t", "10u", "10v", "msl")
         surf_vars = {k: adapted[:, :, i, :, :] for i, k in enumerate(keys)}
         # Each surf_vars[k] has shape [B, T, H_target, W_target]
-
+        # TODO REMOVE and use the Batche's values
         # As this new modality is the only input, we create default static_vars and atmos_vars.
         # For static_vars, use zeros of shape [H_target, W_target]
         static_vars = {
@@ -210,21 +218,58 @@ class NewModalityEncoder(nn.Module):
             metadata=metadata
         )
 
-# TODO adapt to map back from Batch to our modalities shapes
 class VectorDecoder(nn.Module):
-    def __init__(self, latent_dim: int = 128, out_channels: int = 500, final_resolution: Tuple[int, int] = (152, 320), hidden_dim: int = 256):
+    def __init__(
+        self,
+        latent_dim: int = 128,
+        out_channels: int = 500,
+        hidden_dim: int = 256,
+        final_resolution: Tuple[int, int] = (152, 320)
+    ):
         """
-        Decodes a latent vector (from the frozen backbone) into a spatial output.
-        Args:
-            latent_dim: Dimension of the latent vector.
-            out_channels: Number of output channels (e.g., 500 species).
-            final_resolution: Desired output resolution (H, W) = (152, 320).
-            hidden_dim: Dimension of the intermediate feature map.
+        Decodes a Batch structure (with surf_vars and atmos_vars at a low resolution)
+        into a compact latent representation and then upsamples it to produce an output tensor of shape [B, out_channels, 152, 320].
+        
+        The input Batch is expected to have:
+          - surf_vars: keys "2t", "10u", "10v", "msl" with shape [B, 4, 17, 32]
+          - atmos_vars: keys "z", "u", "v", "t", "q" with shape [B, 5, 4, 17, 32]
+        
+        This decoder performs the following steps:
+          1. Extracts and flattens the surf_vars into a vector of size 4*17*32 = 2176.
+          2. Extracts and flattens the atmos_vars into a vector of size 5*4*17*32 = 10880.
+          3. Projects each to a latent vector of size latent_dim.
+          4. Fuses the two latent vectors (by concatenation followed by a linear layer).
+          5. Maps the fused latent representation to an intermediate feature map.
+          6. Upsamples via transposed convolutions to reach final resolution (152, 320).
         """
         super().__init__()
-        # Choose an intermediate spatial resolution; here, we pick (19, 40) so that 19*8=152 and 40*8=320.
-        inter_res = (19, 40)
-        self.fc = nn.Linear(latent_dim, hidden_dim * inter_res[0] * inter_res[1])
+        ### V1
+        # Constants: low resolution expected in the Batch.
+        surf_resolution = (17, 32)
+        atmos_resolution = (17, 32)
+        self.expected_low_res = surf_resolution
+        # surf_vars: 4 keys, each of shape [B, 1, 17, 32] → total features = 4*17*32 = 2176.
+        self.surf_in_dim = 4 * surf_resolution[0] * surf_resolution[1]  # 2176
+        # atmos_vars: 5 keys, each with 4 channels, shape [B, 1, 4, 17, 32] → total features = 5*4*17*32 = 10880.
+        self.atmos_in_dim = 5 * 4 * atmos_resolution[0] * atmos_resolution[1]  # 10880
+        
+        ### V2
+        # Use the full resolution available.
+        # H, W = final_resolution  # (152, 320)
+        # self.surf_in_dim = 4 * H * W         # 4 * 152 * 320 = 194560
+        # self.atmos_in_dim = 5 * 4 * H * W      # 5 * 4 * 152 * 320 = 972800
+
+        # Linear layers to project flattened features to latent_dim.
+        self.surf_linear = nn.Linear(self.surf_in_dim, latent_dim)
+        self.atmos_linear = nn.Linear(self.atmos_in_dim, latent_dim)
+        # Fuse the two latent representations (concatenation -> 2*latent_dim) and map to latent_dim.
+        self.fusion = nn.Linear(2 * latent_dim, latent_dim)
+        
+        # Define an intermediate spatial resolution for upsampling.
+        # We choose (19, 40) so that after three upsampling steps we reach (152, 320) since 19*8=152 and 40*8=320.
+        self.inter_res = (19, 40)
+        # Map fused latent to a hidden feature map.
+        self.fc = nn.Linear(latent_dim, hidden_dim * self.inter_res[0] * self.inter_res[1])
         self.conv = nn.Sequential(
             nn.ConvTranspose2d(hidden_dim, hidden_dim // 2, kernel_size=4, stride=2, padding=1),  # (19,40) -> (38,80)
             nn.BatchNorm2d(hidden_dim // 2),
@@ -234,17 +279,64 @@ class VectorDecoder(nn.Module):
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(hidden_dim // 4, out_channels, kernel_size=4, stride=2, padding=1)  # (76,160) -> (152,320)
         )
-        self.inter_res = inter_res
+        self.final_resolution = final_resolution
+        self.out_channels = out_channels
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, batch: Batch) -> torch.Tensor:
         """
         Args:
-            x: Latent vector of shape [B, latent_dim].
+            batch: A Batch structure whose surf_vars and atmos_vars are at low resolution.
+                   Expected:
+                     - Each surf_vars[key] has shape [B, 1, 17, 32].
+                     - Each atmos_vars[key] has shape [B, 1, 4, 17, 32].
         Returns:
-            Output tensor of shape [B, out_channels, 152, 320].
+            A tensor of shape [B, out_channels, 152, 320] representing the final decoded output.
         """
-        B = x.size(0)
-        x = self.fc(x)  # [B, hidden_dim * 19 * 40]
-        x = x.view(B, -1, self.inter_res[0], self.inter_res[1])  # [B, hidden_dim, 19, 40]
-        x = self.conv(x)  # [B, out_channels, 152, 320]
-        return x
+        B = next(iter(batch.surf_vars.values())).size(0)
+        # Process surface variables.
+        surf_features = []
+        surf_keys = ("2t", "10u", "10v", "msl")
+        for key in surf_keys:
+            # Extract the first (and only) timestep: shape [B, 17, 32]
+            feat = batch.surf_vars[key][:, 0, ...]
+            # print("Surf keys dim", batch.surf_vars[key].shape)
+            # Add a channel dimension if necessary (should be [B, 1, 17, 32]).
+            if feat.dim() == 3:
+                feat = feat.unsqueeze(1)
+            # Downsample to expected resolution using adaptive average pooling.
+            feat_ds = F.adaptive_avg_pool2d(feat, self.expected_low_res)  # [B, 1, 17, 32]
+            surf_features.append(feat_ds)
+        # Concatenate along channel dimension → [B, 4, 17, 32].
+        surf_concat = torch.cat(surf_features, dim=1)
+        # Flatten: [B, 4*17*32] = [B, 2176].
+        surf_flat = surf_concat.view(B, -1)
+        # Project to latent.
+        # print("Surf_flat dim", surf_flat.shape)
+        latent_surf = self.surf_linear(surf_flat)  # [B, latent_dim]
+        
+        # Process atmospheric variables.
+        atmos_features = []
+        atmos_keys = ("z", "u", "v", "t", "q")
+        for key in atmos_keys:
+            # Each atmos_vars[key] is expected to have shape [B, 1, 4, 17, 32].
+            feat = batch.atmos_vars[key][:, 0, ...]  # now shape: [B, 4, 17, 32]
+            # Downsample spatially to expected resolution.
+            feat_ds = F.adaptive_avg_pool2d(feat, self.expected_low_res)  # [B, 4, 17, 32]
+            atmos_features.append(feat_ds)
+        # Concatenate along channel dimension → [B, 5*4, 17, 32] = [B, 20, 17, 32].
+        atmos_concat = torch.cat(atmos_features, dim=1)
+        # Flatten: [B, 20*17*32] = [B, 10880].
+        atmos_flat = atmos_concat.view(B, -1)
+        # Project to latent.
+        latent_atmos = self.atmos_linear(atmos_flat)  # [B, latent_dim]
+        
+        # Fuse the latent representations.
+        fused_latent = self.fusion(torch.cat([latent_surf, latent_atmos], dim=1))  # [B, latent_dim]
+        
+        # Map fused latent to intermediate feature map.
+        x_fc = self.fc(fused_latent)  # [B, hidden_dim * 19 * 40]
+        x_fc = x_fc.view(B, -1, self.inter_res[0], self.inter_res[1])  # [B, hidden_dim, 19, 40]
+        
+        # Upsample to final resolution.
+        x_out = self.conv(x_fc)  # [B, out_channels, 152, 320]
+        return x_out

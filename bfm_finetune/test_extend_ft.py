@@ -37,7 +37,7 @@ if __name__ == "__main__":
                          hidden_channels=256,
                          out_channels=species_channels)
     # Move model to device (CPU or GPU).
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     model.to(device)
     new_modality_input = new_modality_input.to(device)
 
