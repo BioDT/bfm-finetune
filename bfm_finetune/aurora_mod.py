@@ -34,7 +34,7 @@ class AuroraModified(nn.Module):
         """
         super().__init__()
         self.base_model = base_model  # Pre-instantiated AuroraSmall model.
-        self.new_input_channels = new_input_channels
+        self.new_input_channels = new_input_channels  # 500
         self.use_new_head = use_new_head
 
         # Freeze pretrained parts.
@@ -53,7 +53,10 @@ class AuroraModified(nn.Module):
 
         if self.use_new_head:
             # The backbone returns that
-            # latent_dim = 128
+            # latent_dim = 128  # 17x32
+            # latent_dim = 12160  # (152, 320)
+            # latent_dim = target_size[0] * target_size[1] // self.base_model.patch_size
+            # print("latent_dim", latent_dim)
             # Determine the target spatial size from the metadata.
             # target_size = (
             #     int(self.base_model.metadata.lat.shape[0]),

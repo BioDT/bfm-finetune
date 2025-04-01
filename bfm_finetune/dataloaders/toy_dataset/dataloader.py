@@ -9,15 +9,19 @@ from torch.utils.data import Dataset
 class ToyClimateDataset(Dataset):
     def __init__(
         self,
-        geo_size=Tuple[int],
-        num_samples=200,
+        geo_size: Tuple[int, int],
+        num_samples=10,
         new_input_channels=10,
         num_species=10000,
     ):
         self.num_samples = num_samples
         self.new_input_channels = new_input_channels
         self.num_species = num_species
-        self.lat = torch.linspace(90, -90, geo_size[0])
+
+        # Define latitude and longitude grids.
+        self.lat = torch.linspace(
+            start=90, end=-90, steps=geo_size[0]
+        )
         self.lon = torch.linspace(0, 360, geo_size[1] + 1)[:-1]
         self.metadata = Metadata(
             lat=self.lat,

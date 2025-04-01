@@ -6,6 +6,7 @@ import torch.optim as optim
 from aurora import Aurora, AuroraSmall
 from aurora.batch import Batch, Metadata
 from torch.utils.data import DataLoader, Dataset, default_collate
+from tqdm import tqdm
 
 from bfm_finetune.aurora_mod import AuroraModified, AuroraExtend, AuroraFlex
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
@@ -29,14 +30,13 @@ def finetune_new_variables(use_small=True, use_toy=True):
         base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt")
         embed_dim = 512
     base_model.to(device)
-    # config = {
-    #     "embed_dim": embed_dim,
-    # }
+
     num_species = 1000  # Our new finetuning dataset has 1000 channels.
-    geo_size = (152, 320)  # BREAKS
+    geo_size = (152, 320)  # WORKS
     # geo_size = (17, 32)  # WORKS
-    batch_size = 1  # 2
+    batch_size = 1 if use_toy else 2
     latent_dim = 12160
+
 
     if use_toy:
         dataset = ToyClimateDataset(
@@ -113,5 +113,5 @@ def finetune_new_variables(use_small=True, use_toy=True):
 
 
 if __name__ == "__main__":
-    finetune_new_variables(use_toy=True)
-    # finetune_new_variables(use_toy=False)
+    # finetune_new_variables(use_toy=True)
+    finetune_new_variables(use_toy=False)

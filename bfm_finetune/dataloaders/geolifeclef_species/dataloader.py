@@ -37,7 +37,7 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
             atmos_levels=(100, 250, 500, 850),
         )
         species_distribution = data["species_distribution"]
-        print(species_distribution.shape)
+        # print(species_distribution.shape)
         # [T, S, H, W]
         H = species_distribution.shape[2]
         W = species_distribution.shape[3]
@@ -55,5 +55,5 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
         )
         target = torch.randn(self.num_species, H, W)
         target = species_distribution[1, :, :, :]
-        print(target.shape)
+        # print(target.shape)
         return {"batch": batch, "target": target}
