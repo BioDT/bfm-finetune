@@ -17,9 +17,8 @@ class ToyClimateDataset(Dataset):
         self.num_samples = num_samples
         self.new_input_channels = new_input_channels
         self.num_species = num_species
-        # Define latitude and longitude grids.
-        self.lat = torch.linspace(90, -90, geo_size[0])  # 17 latitude points
-        self.lon = torch.linspace(0, 360, geo_size[1] + 1)[:-1]  # 32 longitude points
+        self.lat = torch.linspace(90, -90, geo_size[0])
+        self.lon = torch.linspace(0, 360, geo_size[1] + 1)[:-1]
         self.metadata = Metadata(
             lat=self.lat,
             lon=self.lon,
@@ -35,7 +34,6 @@ class ToyClimateDataset(Dataset):
         return self.num_samples
 
     def __getitem__(self, idx):
-        # Simulate new finetuning input with shape (T, new_input_channels, H, W).
         new_input = torch.randn(self.T, self.new_input_channels, self.H, self.W)
         surf_vars = {"species_distribution": new_input}
         static_vars = {k: torch.randn(self.H, self.W) for k in ("lsm", "z", "slt")}
@@ -48,6 +46,6 @@ class ToyClimateDataset(Dataset):
             atmos_vars=atmos_vars,
             metadata=self.metadata,
         )
-        # Target: high-dimensional variable with shape (num_species, H, W).
+        # TODO Validate: Need to add at first dim T=1 for V2 and V3 model implementations
         target = torch.randn(self.num_species, self.H, self.W)
         return {"batch": batch, "target": target}

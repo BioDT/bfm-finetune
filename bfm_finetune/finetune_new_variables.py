@@ -7,7 +7,7 @@ from aurora import Aurora, AuroraSmall
 from aurora.batch import Batch, Metadata
 from torch.utils.data import DataLoader, Dataset, default_collate
 
-from bfm_finetune.aurora_mod import AuroraModified, AuroraExtend
+from bfm_finetune.aurora_mod import AuroraModified, AuroraExtend, AuroraFlex
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
 from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
@@ -32,9 +32,9 @@ def finetune_new_variables(use_small=True, use_toy=True):
     # config = {
     #     "embed_dim": embed_dim,
     # }
-    num_species = 10  # Our new finetuning dataset has 10 channels.
-    # geo_size = (152, 320)  # BREAKS
-    geo_size = (17, 32)  # WORKS
+    num_species = 1000  # Our new finetuning dataset has 1000 channels.
+    geo_size = (152, 320)  # BREAKS
+    # geo_size = (17, 32)  # WORKS
     batch_size = 1  # 2
     latent_dim = 12160
 
@@ -77,14 +77,17 @@ def finetune_new_variables(use_small=True, use_toy=True):
     # )
 
     ####### V2
-    model = AuroraExtend(base_model=base_model,
-                         latent_dim=latent_dim,
-                         in_channels=num_species,
-                         hidden_channels=128,
-                         out_channels=num_species,
-                         target_size=geo_size)
+    # model = AuroraExtend(base_model=base_model,
+    #                      latent_dim=latent_dim,
+    #                      in_channels=num_species,
+    #                      hidden_channels=128,
+    #                      out_channels=num_species,
+    #                      target_size=geo_size)
+    # params_to_optimize = model.parameters()
+
+    ###### V3
+    model = AuroraFlex(base_model=base_model)
     params_to_optimize = model.parameters()
-    
     
     model.to(device)
     

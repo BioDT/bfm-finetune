@@ -329,10 +329,7 @@ class VectorDecoder(nn.Module):
         atmos_concat = torch.cat(atmos_features, dim=1)
         # Flatten: [B, 20*17*32] = [B, 10880].
         atmos_flat = atmos_concat.view(B, -1)
-        # Project to latent.
         latent_atmos = self.atmos_linear(atmos_flat)  # [B, latent_dim]
-        
-        # Fuse the latent representations.
         fused_latent = self.fusion(torch.cat([latent_surf, latent_atmos], dim=1))  # [B, latent_dim]
         
         # Map fused latent to intermediate feature map.
@@ -366,12 +363,10 @@ class VectorDecoderSimple(nn.Module):
         """
         super().__init__()
         H, W = final_resolution  # (152, 320)
-        # Number of features when flattening surface variables:
         self.surf_in_dim = 4 * H * W         # 4 * 152 * 320 = 194560
         # For atmospheric variables (5 keys, each with 4 channels):
         self.atmos_in_dim = 5 * 4 * H * W      # 5 * 4 * 152 * 320 = 972800
 
-        # Linear projections for each modality:
         self.surf_linear = nn.Linear(self.surf_in_dim, latent_dim)
         self.atmos_linear = nn.Linear(self.atmos_in_dim, latent_dim)
         # Fusion of the two latent vectors:
@@ -395,7 +390,6 @@ class VectorDecoderSimple(nn.Module):
         B = next(iter(batch.surf_vars.values())).size(0)
         H, W = self.final_resolution
         
-        # Process surface variables.
         surf_keys = ("2t", "10u", "10v", "msl")
         surf_feats = []
         for key in surf_keys:
@@ -411,7 +405,6 @@ class VectorDecoderSimple(nn.Module):
         surf_flat = surf_concat.view(B, -1)
         latent_surf = self.surf_linear(surf_flat)  # [B, latent_dim]
         
-        # Process atmospheric variables.
         atmos_keys = ("z", "u", "v", "t", "q")
         atmos_feats = []
         for key in atmos_keys:
@@ -427,7 +420,111 @@ class VectorDecoderSimple(nn.Module):
         # Fuse the two latent representations.
         fused_latent = self.fusion(torch.cat([latent_surf, latent_atmos], dim=1))  # [B, latent_dim]
         
-        # Decode the fused latent into the final output.
         fc_out = self.fc_out(fused_latent)  # [B, out_channels * 152 * 320]
         x_out = fc_out.view(B, self.out_channels, H, W)
         return x_out
+    
+class Conv3dBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1):
+        super().__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size, padding=padding)
+        self.bn = nn.BatchNorm3d(out_channels)
+    
+    def forward(self, x):
+        return F.relu(self.bn(self.conv(x)))
+
+class InputMapper(nn.Module):
+    def __init__(self, in_channels=1000, timesteps=2, base_channels=64, geo_size=(152, 320)):
+        super(InputMapper, self).__init__()
+        self.geo_size = geo_size
+        self.init_conv = nn.Conv3d(in_channels, base_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.encoder_conv = nn.Conv3d(base_channels, base_channels * 2, kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1))
+        self.decoder_conv = nn.ConvTranspose3d(base_channels * 2, base_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+        self.final_conv = nn.Conv3d(base_channels, 27, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, batch):
+        """
+        Args:
+            x: Tensor of shape [T, C_in, H, W] (T=2, C_in=1000)
+        Returns:
+            Batch structure with surf_vars, static_vars, atmos_vars, and metadata.
+        """
+        # x: [T, C_in, H, W] -> [1, C_in, T, H, W]
+        x = batch.surf_vars["species_distribution"]
+        # print("Encode x.shape", x.shape)
+        B, T, C_in, H, W = x.shape
+        # Rearrange input: [B, T, C_in, H, W] -> [B, C_in, T, H, W]
+        x = x.permute(0, 2, 1, 3, 4)
+        x = self.relu(self.init_conv(x))          # [B, base_channels, T, H, W]
+        x_enc = self.relu(self.encoder_conv(x))     # [B, base_channels*2, T, H/2, W/2]
+        x_dec = self.relu(self.decoder_conv(x_enc)) # [B, base_channels, T, H, W]
+        # Optional skip connection
+        x_dec = x_dec + x
+        x_out = self.final_conv(x_dec)              # [B, 27, T, H, W]
+
+        surf = x_out[:, :4, :, :, :]
+        surf = surf.permute(0, 2, 1, 3, 4)  # -> [B, T, 4, H, W]
+        keys_surf = ("2t", "10u", "10v", "msl")
+        surf_vars = {k: surf[:, :, i, :, :] for i, k in enumerate(keys_surf)}
+
+        # Static_vars: next 3 channels -> [B, 3, T, H, W]
+        static = x_out[:, 4:7, :, :, :]
+        # For static vars, take the first time step for each batch element: [B, 3, H, W]
+        static = static[0, :, 0, :, :]
+        keys_static = ("lsm", "z", "slt")
+        static_vars = {k: static[i, :, :] for i, k in enumerate(keys_static)}
+
+        # Atmos_vars: remaining 20 channels -> [B, 20, T, H, W]
+        atmos = x_out[:, 7:, :, :, :]  
+        # Reshape to [B, 5, 4, T, H, W] then permute to [B, T, 5, 4, H, W]
+        atmos = atmos.view(B, 5, 4, T, H, W)
+        atmos = atmos.permute(0, 3, 1, 2, 4, 5)  # -> [B, T, 5, 4, H, W]
+        keys_atmos = ("z", "u", "v", "t", "q")
+        atmos_vars = {k: atmos[:, :, i, :, :, :] for i, k in enumerate(keys_atmos)}
+        #TODO Adapt per use-case
+        metadata = Metadata(
+            lat = torch.linspace(90, -90, self.geo_size[0]),
+            lon = torch.linspace(0, 360, self.geo_size[1] + 1)[:-1],
+            time=(datetime(2020, 6, 1, 12, 0),),
+            atmos_levels=(100, 250, 500, 850),
+        )
+        return Batch(surf_vars=surf_vars, static_vars=static_vars, atmos_vars=atmos_vars, metadata=metadata)
+
+
+class OutputMapper(nn.Module):
+    def __init__(self, in_channels=27, out_channels=1000):
+        super(OutputMapper, self).__init__()
+        # A simple learnable network to reconstruct the output.
+        self.conv1 = nn.Conv3d(in_channels, 64, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.conv2 = nn.Conv3d(64, 128, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.conv3 = nn.Conv3d(128, out_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.relu = nn.ReLU(inplace=True)
+    
+    def forward(self, batch: Batch) -> torch.Tensor:
+        """
+        Reconstructs the prediction back to a tensor of shape [T, C_out, H, W] where T=1.
+        """
+        b, t, H, W = next(iter(batch.surf_vars.values())).shape
+        
+        # For surf_vars: unsqueeze to add channel dimension: [B, T, 1, H, W]
+        surf_list = [v.unsqueeze(2) for v in batch.surf_vars.values()]
+        surf = torch.cat(surf_list, dim=2)  # -> [B, T, 4, H, W]
+        # For static_vars: unsqueeze to add batch and time dims resulting in [1, 1, H, W],
+        # then expand to [B, T, 1, H, W]
+        static_list = [v.unsqueeze(0).unsqueeze(0).expand(b, t, 1, H, W)
+                       for v in batch.static_vars.values()]
+        static = torch.cat(static_list, dim=2)  # -> [B, T, 3, H, W]
+
+        # For atmos_vars: already [B, T, 4, H, W] each; concatenate to get [B, T, 20, H, W]
+        atmos_list = [v for v in batch.atmos_vars.values()]
+        atmos = torch.cat(atmos_list, dim=2)  # -> [B, T, 20, H, W]
+        
+        x = torch.cat([surf, static, atmos], dim=2)
+        x = x.permute(0, 2, 1, 3, 4)
+        x = self.relu(self.conv1(x))
+        x = self.relu(self.conv2(x))
+        x = self.conv3(x)
+        # Rearrange back to [B, T, out_channels, H, W]
+        x = x.permute(0, 2, 1, 3, 4)
+        return x
