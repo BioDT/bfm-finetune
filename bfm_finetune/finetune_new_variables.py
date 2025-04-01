@@ -14,7 +14,7 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def finetune_new_variables(use_small=True, use_toy=True):
@@ -32,18 +32,35 @@ def finetune_new_variables(use_small=True, use_toy=True):
     # config = {
     #     "embed_dim": embed_dim,
     # }
-    num_species = 1000  # Our new finetuning dataset has 10 channels.
-    geo_size = (152, 320)  # BREAKS
-    # geo_size = (17, 32)  # WORKS
-    batch_size = 2  # 2
+    num_species = 10  # Our new finetuning dataset has 10 channels.
+    # geo_size = (152, 320)  # BREAKS
+    geo_size = (17, 32)  # WORKS
+    batch_size = 1  # 2
+    latent_dim = 12160
 
+    if use_toy:
+        dataset = ToyClimateDataset(
+            num_samples=100,
+            new_input_channels=num_species,
+            num_species=num_species,
+            geo_size=geo_size,
+        )
+    else:
+        dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=custom_collate_fn,
+        num_workers=15,
+    )
     #######   V1
     # model = AuroraModified(
     #     base_model=base_model,
     #     new_input_channels=num_species,
     #     use_new_head=True,
     #     target_size=geo_size,
-    #     # **config,
+    #     latent_dim=latent_dim,
     # )
 
     # # Freeze all pretrained parts. We already froze base_model inside AuroraModified.
@@ -60,38 +77,22 @@ def finetune_new_variables(use_small=True, use_toy=True):
     # )
 
     ####### V2
-    species_channels = 1000
-    latent_dim = 12160
     model = AuroraExtend(base_model=base_model,
                          latent_dim=latent_dim,
-                         in_channels=species_channels,
-                         hidden_channels=256,
-                         out_channels=species_channels)
-    model.to(device)
-
+                         in_channels=num_species,
+                         hidden_channels=128,
+                         out_channels=num_species,
+                         target_size=geo_size)
+    params_to_optimize = model.parameters()
     
-    optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+    
+    model.to(device)
+    
+    optimizer = optim.AdamW(params_to_optimize, lr=1e-3)
     criterion = nn.MSELoss()
 
-    if use_toy:
-        dataset = ToyClimateDataset(
-            num_samples=1000,
-            new_input_channels=num_species,
-            num_species=num_species,
-            geo_size=geo_size,
-        )
-    else:
-        dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=custom_collate_fn,
-        num_workers=15,
-    )
-
     model.train()
-    num_epochs = 10
+    num_epochs = 20
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for sample in dataloader:
@@ -99,8 +100,8 @@ def finetune_new_variables(use_small=True, use_toy=True):
             targets = sample["target"].to(device)
             optimizer.zero_grad()
             outputs = model(batch)  # outputs: (B, 10000, H, W)
-            print(f"output shape {outputs.shape}")
-            print(f"target shape {targets.shape}")
+            # print(f"output shape {outputs.shape}")
+            # print(f"target shape {targets.shape}")
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
