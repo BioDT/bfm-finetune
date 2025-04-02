@@ -62,7 +62,8 @@ def main(cfg):
     torch.set_float32_matmul_precision(cfg.training.precision_in)
 
     # Seed the experiment for numpy, torch and python.random.
-    seed_everything(42)
+    # TODO: sometimes linked to loss nan???
+    # seed_everything(0)
 
     output_dir = HydraConfig.get().runtime.output_dir
 
@@ -191,16 +192,16 @@ def main(cfg):
                 mlflow.log_metric("best_loss", best_loss, step=epoch+1)
 
     # final evaluate
-    # for sample in val_dataloader:
-    #     batch = sample["batch"].to(device)
-    #     target = sample["target"]
-    #     with torch.inference_mode():
-    #         prediction = model.forward(batch)
-    #     plot_eval(
-    #         batch=batch,
-    #         prediction_species=prediction,
-    #         out_dir=plots_dir,
-    #     )
+    for sample in val_dataloader:
+        batch = sample["batch"].to(device)
+        target = sample["target"]
+        with torch.inference_mode():
+            prediction = model.forward(batch)
+        plot_eval(
+            batch=batch,
+            prediction_species=prediction,
+            out_dir=plots_dir,
+        )
 
 
 if __name__ == "__main__":

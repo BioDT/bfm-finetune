@@ -95,33 +95,34 @@ def plot_eval(
     batch: Batch,
     prediction_species: torch.Tensor,
     out_dir: Path,
-    n_species_to_plot: int = 5,
+    n_species_to_plot: int = 20,
 ):
     metadata = batch.metadata
     lat = metadata.lat.cpu().numpy()
     lon = metadata.lon.cpu().numpy()
-    min_lon = lon.min()
-    max_lon = lon.max()
-    min_lat = lat.min()
-    max_lat = lat.max()
+    extent = {
+        "lat": lat,
+        "lon": lon,
+    }
     time = metadata.time # tuple with shape [B, T]
-    print("time", len(time))
+    # print("time", len(time))
     species_distribution = batch.surf_vars["species_distribution"]
-    print("species_distribution", species_distribution.shape) # [B, T=2, S, H, W]
+    # print("species_distribution", species_distribution.shape) # [B, T=2, S, H, W]
     t0_species = species_distribution[:, 0, :, :, :] # [B, S, H, W]
     target_species = species_distribution[:, 0, :, :, :]
-    print("prediction", prediction_species.shape) # [B, T=1, S, H, W]
+    # print("prediction", prediction_species.shape) # [B, T=1, S, H, W]
     prediction_species = prediction_species[:, 0, :, :]
 
     lon_above_loc = np.where(lon > 180)[0]
     count_above = len(lon_above_loc)
-    print("count_above", count_above)
+    # print("count_above", count_above)
     for single_b in range(prediction_species.shape[0]):
         plot_single(
             t0_species[single_b],
             target_species[single_b],
             prediction_species[single_b],
             times=time[single_b],
+            extent=extent,
             n_species_to_plot=n_species_to_plot,
             count_above=count_above,
             out_dir=out_dir,
@@ -167,16 +168,33 @@ def plot_eval(
     # fig.update_layout(geo_dict)
     # fig.update_layout(title="Predictions")
 
-def plot_single(t0_species, target_species, prediction_species, times, n_species_to_plot: int, count_above: int, out_dir: Path):
-    
-    europe_extent = [-30, 40, 34.25, 72]
-    # europe_extent = TODO: transform back
-    lat_fixed = np.linspace(72, 34.25, 152)
-    lat_fixed = np.sort(lat_fixed)  # Now from 34.25 to 72.0.
+def create_subfig(fig, ax, extent, matrix, title, label="Value"):
+    extent_array = extent["extent_array"]
+    lat = extent["lat"]
+    lon = extent["lon"]
+    # print("extent_array", extent_array)
+    # europe_extent = [-30, 40, 34.25, 72]
+    Lon, Lat = np.meshgrid(lon, np.sort(lat), indexing="xy")
+    ax.set_extent(extent_array, crs=ccrs.PlateCarree())
+    try:
+        ax.coastlines(resolution="50m")
+    except Exception as e:
+        print("Error drawing coastlines on Timestep 2:", e)
+    cf2 = ax.contourf(
+        Lon, Lat, matrix, levels=60, cmap="viridis", transform=ccrs.PlateCarree()
+    )
+    ax.set_title(title)
+    fig.colorbar(cf2, ax=ax, orientation="vertical", label=label)
+
+
+def plot_single(t0_species, target_species, prediction_species, times, extent, n_species_to_plot: int, count_above: int, out_dir: Path):
+    # europe_extent = [-30, 40, 34.25, 72]
+    # lat_fixed = np.linspace(72, 34.25, 152)
+    # lat_fixed = np.sort(lat_fixed)  # Now from 34.25 to 72.0.
     # Longitude: 320 points linearly spaced from -30.0 to 40.0.
-    lon_fixed = np.linspace(-30, 40, 320)
+    # lon_fixed = np.linspace(-30, 40, 320)
     # Create a meshgrid.
-    Lon, Lat = np.meshgrid(lon_fixed, lat_fixed, indexing="xy")
+    # Lon, Lat = np.meshgrid(lon_fixed, lat_fixed, indexing="xy")
     
     for species_i in range(n_species_to_plot):
         fig, axes = plt.subplots(
@@ -187,56 +205,49 @@ def plot_single(t0_species, target_species, prediction_species, times, n_species
         prediction = prediction_species[species_i, :, :].cpu().numpy()
         # roll
         # now put lon+360
+        lat = extent["lat"].copy()
+        lon = extent["lon"].copy()
+        # print(lon)
+        lon_above_loc = np.where(lon > 180)[0]
+        count_above = len(lon_above_loc)
+        lon[-count_above:] -= 360
+        # lon = np.sort(lon)
+        lon = np.roll(lon, shift=+(count_above))
+        # print("LON NOW", lon)
+        extent_array = [
+            lon.min(),
+            lon.max(),
+            lat.min(),
+            lat.max(),
+        ]
+        new_extent = {
+            "extent_array": extent_array,
+            "lat": lat,
+            "lon": lon
+        }
 
-        # lon_range[: max_above + 1] -= 360
-        # lon_range = np.roll(lon_range, shift=+(max_above + 1))
-        t0_vals = np.roll(t0_vals, shift=+(count_above))
-        target = np.roll(target, shift=+(count_above))
-        prediction = np.roll(prediction, shift=+(count_above))
-        print(t0_vals.shape, target.shape, prediction.shape)
+        # roll the [180,360) portion to [-180, 0)
+        t0_vals = np.roll(t0_vals, shift=+(count_above), axis=1)
+        target = np.roll(target, shift=+(count_above), axis=1)
+        prediction = np.roll(prediction, shift=+(count_above), axis=1)
+        # and filp the lat axis (y increasing with lat decreasing)
+        t0_vals = np.flip(t0_vals, axis=0)
+        target = np.flip(target, axis=0)
+        prediction = np.flip(prediction, axis=0)
+        # print(t0_vals.shape, target.shape, prediction.shape)
 
         # subfig 1
-        ax = axes[0]
-        ax.set_extent(europe_extent, crs=ccrs.PlateCarree())
-        try:
-            ax.coastlines(resolution="50m")
-        except Exception as e:
-            print("Error drawing coastlines on Timestep 1:", e)
-        cf1 = ax.contourf(
-            Lon, Lat, t0_vals, levels=60, cmap="viridis", transform=ccrs.PlateCarree()
-        )
-        ax.set_title(f"species {species_i}: T0={times[0]}")
-        fig.colorbar(cf1, ax=ax, orientation="vertical", label="Value")
+        create_subfig(fig=fig, ax = axes[0], extent=new_extent, matrix=t0_vals, title=f"species {species_i}: T0={times[0]}")
 
         # subfig 2
-        ax = axes[1]
-        ax.set_extent(europe_extent, crs=ccrs.PlateCarree())
-        try:
-            ax.coastlines(resolution="50m")
-        except Exception as e:
-            print("Error drawing coastlines on Timestep 2:", e)
-        cf2 = ax.contourf(
-            Lon, Lat, target, levels=60, cmap="viridis", transform=ccrs.PlateCarree()
-        )
-        ax.set_title(f"species {species_i}: target ={times[1]}")
-        fig.colorbar(cf2, ax=ax, orientation="vertical", label="Value")
+        create_subfig(fig=fig, ax = axes[1], extent=new_extent, matrix=target, title=f"species {species_i}: target ={times[1]}")
 
         # subfig 3
-        ax = axes[2]
-        ax.set_extent(europe_extent, crs=ccrs.PlateCarree())
-        try:
-            ax.coastlines(resolution="50m")
-        except Exception as e:
-            print("Error drawing coastlines on Difference plot:", e)
-        cf_diff = ax.contourf(
-            Lon, Lat, prediction, levels=60, cmap="RdBu_r", transform=ccrs.PlateCarree()
-        )
-        ax.set_title(f"species {species_i}: prediction ={times[1]}")
-        fig.colorbar(cf_diff, ax=ax, orientation="vertical", label="Difference")
+        create_subfig(fig=fig, ax = axes[2], extent=new_extent, matrix=prediction, title=f"species {species_i}: prediction ={times[1]}")
 
         plt.tight_layout()
         fig.canvas.draw()
-        filename = out_dir / f"eval_{times[0]}-{times[1]}_species{species_i}.jpeg"
+        filename = out_dir / f"eval_species_{species_i}_{times[0]}-{times[1]}.jpeg"
         plt.savefig(filename, dpi=300, bbox_inches="tight")
         plt.show()
         plt.close(fig)
