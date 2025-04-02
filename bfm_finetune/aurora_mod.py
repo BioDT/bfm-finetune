@@ -7,7 +7,13 @@ import torch.nn as nn
 from aurora.batch import Batch
 
 from bfm_finetune.lora_adapter import LoRAAdapter
-from bfm_finetune.new_variable_decoder import NewVariableHead
+from bfm_finetune.new_variable_decoder import (
+    InputMapper,
+    NewModalityEncoder,
+    NewVariableHead,
+    OutputMapper,
+    VectorDecoder,
+)
 
 
 class ChannelAdapter(nn.Module):
@@ -26,6 +32,7 @@ class AuroraModified(nn.Module):
         new_input_channels: int,
         target_size: Tuple[int, int],
         use_new_head: bool = True,
+        latent_dim: int = 12160,
     ):
         """
         Wraps a pretrained Aurora model (e.g. AuroraSmall) to adapt a new input with different channels
@@ -54,7 +61,7 @@ class AuroraModified(nn.Module):
             # The backbone returns that
             # latent_dim = 128  # 17x32
             # latent_dim = 12160  # (152, 320)
-            latent_dim = target_size[0] * target_size[1] // self.base_model.patch_size
+            # latent_dim = target_size[0] * target_size[1] // self.base_model.patch_size
             # print("latent_dim", latent_dim)
             # Determine the target spatial size from the metadata.
             # target_size = (
@@ -151,3 +158,106 @@ class AuroraModified(nn.Module):
             )
             # print(original_output.shape)
             return original_output
+
+
+class AuroraExtend(nn.Module):
+    def __init__(
+        self,
+        base_model: nn.Module,
+        latent_dim: int,
+        in_channels: int = 1000, # 2 x 500
+        hidden_channels: int = 160,
+        out_channels: int = 1000,
+        target_size: Tuple[int, int] = [152, 320],
+    ):
+        """
+        Wraps a pretrained Aurora model (e.g. AuroraSmall) to adapt a new input with different channels
+        and produce a new high-dimensional output.
+        """
+        super().__init__()
+        self.base_model = base_model  # Pre-instantiated AuroraSmall model.
+        self.latent_dim = latent_dim
+        self.in_channels = in_channels
+        self.hidden_channels = hidden_channels
+        self.out_channels = out_channels
+
+        self.encoder = NewModalityEncoder(self.in_channels, self.hidden_channels, target_size)
+        self.decoder = VectorDecoder(self.latent_dim, self.out_channels, self.hidden_channels, target_size)
+
+        # Freeze pretrained parts.
+        for param in self.base_model.encoder.parameters():
+            param.requires_grad = False
+        for param in self.base_model.backbone.parameters():
+            param.requires_grad = False
+        for param in self.base_model.decoder.parameters():
+            param.requires_grad = False
+        print("Initialized AuroraExtend Mod")
+
+    def forward(self, batch):
+        # p = next(self.parameters())
+        # batch = batch.type(p.dtype)
+        # batch = batch.to(p.device) # Bach here has T=2
+        # TODO Adapt the dataset to provide only the new variable
+        # x = batch.surface_vars["species_distribution"]
+        x = batch
+        # Encode input
+        # print("batch", x)
+        encoded_input = self.encoder(x)
+        # print("Encoder output", encoded_input)
+        # Pass through the Aurora model
+        aurora_output = self.base_model(encoded_input)
+        # print("Aurora output", aurora_output)
+        # Decode Aurora output
+        decoded_aurora = self.decoder(aurora_output)
+        # print("Decoder output", decoded_aurora)
+        return decoded_aurora
+    
+
+class AuroraFlex(nn.Module):
+    def __init__(
+        self,
+        base_model: nn.Module,
+        in_channels: int = 1000, # 2 x 500
+        hidden_channels: int = 160,
+        out_channels: int = 1000,
+    ):
+        """
+        Wraps a pretrained Aurora model (e.g. AuroraSmall) to adapt a new input with different channels
+        and produce a new high-dimensional output.
+        """
+        super().__init__()
+        self.base_model = base_model  # Pre-instantiated AuroraSmall model.
+        self.in_channels = in_channels
+        self.hidden_channels = hidden_channels
+        self.out_channels = out_channels
+
+        self.encoder = InputMapper(in_channels=in_channels, timesteps=2, base_channels=64)
+        self.decoder = OutputMapper(in_channels=27, out_channels=out_channels)
+
+        # Freeze pretrained parts.
+        for param in self.base_model.encoder.parameters():
+            param.requires_grad = False
+        for param in self.base_model.backbone.parameters():
+            param.requires_grad = False
+        for param in self.base_model.decoder.parameters():
+            param.requires_grad = False
+        print("Initialized AuroraExtend Mod")
+
+    def forward(self, batch):
+        # p = next(self.parameters())
+        # batch = batch.type(p.dtype)
+        # batch = batch.to(p.device) # Bach here has T=2
+        # TODO Adapt the dataset to provide only the new variable
+        # x = batch.surface_vars["species_distribution"]
+        x = batch
+        # Encode input
+        # print("batch", x)
+        encoded_input = self.encoder(x)
+        # print("Encoder output", encoded_input)
+        # Pass through the Aurora model
+        aurora_output = self.base_model(encoded_input)
+        # print("Aurora output", aurora_output)
+        # Decode Aurora output
+        decoded_aurora = self.decoder(aurora_output)
+        # print("Decoder output", decoded_aurora)
+        return decoded_aurora
