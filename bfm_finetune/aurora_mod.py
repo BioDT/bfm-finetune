@@ -223,6 +223,7 @@ class AuroraFlex(nn.Module):
         in_channels: int = 1000, # 2 x 500
         hidden_channels: int = 160,
         out_channels: int = 1000,
+        atmos_levels: Tuple = (100, 250, 500, 850)
     ):
         """
         Wraps a pretrained Aurora model (e.g. AuroraSmall) to adapt a new input with different channels
@@ -234,8 +235,8 @@ class AuroraFlex(nn.Module):
         self.hidden_channels = hidden_channels
         self.out_channels = out_channels
 
-        self.encoder = InputMapper(in_channels=in_channels, timesteps=2, base_channels=64)
-        self.decoder = OutputMapper(in_channels=27, out_channels=out_channels)
+        self.encoder = InputMapper(in_channels=in_channels, timesteps=2, base_channels=64, atmos_levels=atmos_levels)
+        self.decoder = OutputMapper(out_channels=out_channels, atmos_levels=atmos_levels)
 
         # Freeze pretrained parts.
         for param in self.base_model.encoder.parameters():

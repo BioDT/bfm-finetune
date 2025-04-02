@@ -437,70 +437,84 @@ class Conv3dBlock(nn.Module):
     
     def forward(self, x):
         return F.relu(self.bn(self.conv(x)))
-
 class InputMapper(nn.Module):
-    def __init__(self, in_channels=1000, timesteps=2, base_channels=64, geo_size=(152, 320)):
+    def __init__(self, in_channels=1000, timesteps=2, base_channels=64, geo_size=(152, 320), atmos_levels=(100, 250, 500, 850)):
+        """
+        Args:
+            in_channels (int): Number of input channels.
+            timesteps (int): Number of time steps (e.g. 2).
+            base_channels (int): Base number of channels for the network.
+            geo_size (tuple): Tuple with (H, W) for geographic dimensions.
+            num_atmos_levels (int): Number of levels for each atmospheric variable.
+        """
         super(InputMapper, self).__init__()
         self.geo_size = geo_size
+        self.num_atmos_levels = len(atmos_levels)
+        self.atmos_levels = atmos_levels
+        out_channels = 7 + 5 * self.num_atmos_levels
         self.init_conv = nn.Conv3d(in_channels, base_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
-        self.encoder_conv = nn.Conv3d(base_channels, base_channels * 2, kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1))
-        self.decoder_conv = nn.ConvTranspose3d(base_channels * 2, base_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2))
-        self.final_conv = nn.Conv3d(base_channels, 27, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.encoder_conv = nn.Conv3d(base_channels, base_channels * 2, kernel_size=(1, 3, 3),
+                                      stride=(1, 2, 2), padding=(0, 1, 1))
+        self.decoder_conv = nn.ConvTranspose3d(base_channels * 2, base_channels,
+                                               kernel_size=(1, 2, 2), stride=(1, 2, 2))
+        self.final_conv = nn.Conv3d(base_channels, out_channels,
+                                    kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, batch):
         """
         Args:
-            x: Tensor of shape [T, C_in, H, W] (T=2, C_in=1000)
+            batch: An object with batch.surf_vars["species_distribution"] of shape [B, T, C_in, H, W].
         Returns:
-            Batch structure with surf_vars, static_vars, atmos_vars, and metadata.
+            A Batch structure with surf_vars, static_vars, atmos_vars, and metadata.
         """
-        # x: [T, C_in, H, W] -> [1, C_in, T, H, W]
         x = batch.surf_vars["species_distribution"]
-        # print("Encode x.shape", x.shape)
         B, T, C_in, H, W = x.shape
-        # Rearrange input: [B, T, C_in, H, W] -> [B, C_in, T, H, W]
         x = x.permute(0, 2, 1, 3, 4)
         x = self.relu(self.init_conv(x))          # [B, base_channels, T, H, W]
         x_enc = self.relu(self.encoder_conv(x))     # [B, base_channels*2, T, H/2, W/2]
         x_dec = self.relu(self.decoder_conv(x_enc)) # [B, base_channels, T, H, W]
-        # Optional skip connection
+        # Optional skip connection.
         x_dec = x_dec + x
-        x_out = self.final_conv(x_dec)              # [B, 27, T, H, W]
+        x_out = self.final_conv(x_dec)              # [B, 7+5*num_atmos_levels, T, H, W]
 
-        surf = x_out[:, :4, :, :, :]
-        surf = surf.permute(0, 2, 1, 3, 4)  # -> [B, T, 4, H, W]
+        # Surf_vars: first 4 channels → [B, 4, T, H, W] then permute to [B, T, 4, H, W]
+        surf = x_out[:, :4, :, :, :].permute(0, 2, 1, 3, 4)
         keys_surf = ("2t", "10u", "10v", "msl")
         surf_vars = {k: surf[:, :, i, :, :] for i, k in enumerate(keys_surf)}
 
-        # Static_vars: next 3 channels -> [B, 3, T, H, W]
+        # Static_vars: next 3 channels → [B, 3, T, H, W]
         static = x_out[:, 4:7, :, :, :]
-        # For static vars, take the first time step for each batch element: [B, 3, H, W]
+        # For static, take the first batch element and first time step → [3, H, W]
         static = static[0, :, 0, :, :]
-        keys_static = ("lsm", "z", "slt")
+        keys_static = ("lsm", "slt", "z")
         static_vars = {k: static[i, :, :] for i, k in enumerate(keys_static)}
 
-        # Atmos_vars: remaining 20 channels -> [B, 20, T, H, W]
-        atmos = x_out[:, 7:, :, :, :]  
-        # Reshape to [B, 5, 4, T, H, W] then permute to [B, T, 5, 4, H, W]
-        atmos = atmos.view(B, 5, 4, T, H, W)
-        atmos = atmos.permute(0, 3, 1, 2, 4, 5)  # -> [B, T, 5, 4, H, W]
-        keys_atmos = ("z", "u", "v", "t", "q")
+        # Atmos_vars: remaining channels → [B, 5*num_atmos_levels, T, H, W]
+        atmos = x_out[:, 7:, :, :, :]
+        # Reshape to [B, 5, num_atmos_levels, T, H, W] then permute to [B, T, 5, num_atmos_levels, H, W]
+        atmos = atmos.view(B, 5, self.num_atmos_levels, T, H, W).permute(0, 3, 1, 2, 4, 5)
+        keys_atmos = ("t", "u", "v", "q", "z")
         atmos_vars = {k: atmos[:, :, i, :, :, :] for i, k in enumerate(keys_atmos)}
-        #TODO Adapt per use-case
+
         metadata = Metadata(
-            lat = torch.linspace(90, -90, self.geo_size[0]),
-            lon = torch.linspace(0, 360, self.geo_size[1] + 1)[:-1],
+            lat=torch.linspace(90, -90, self.geo_size[0]),
+            lon=torch.linspace(0, 360, self.geo_size[1] + 1)[:-1],
             time=(datetime(2020, 6, 1, 12, 0),),
-            atmos_levels=(100, 250, 500, 850),
+            atmos_levels=self.atmos_levels
         )
         return Batch(surf_vars=surf_vars, static_vars=static_vars, atmos_vars=atmos_vars, metadata=metadata)
 
 
 class OutputMapper(nn.Module):
-    def __init__(self, in_channels=27, out_channels=1000):
+    def __init__(self, out_channels=1000, atmos_levels=(100, 250, 500, 850)):
+        """
+        Args:
+            num_atmos_levels (Tuple): The levels for each atmospheric variable.
+            out_channels (int): Number of output channels.
+        """
         super(OutputMapper, self).__init__()
-        # A simple learnable network to reconstruct the output.
+        in_channels = 7 + 5 * len(atmos_levels)
         self.conv1 = nn.Conv3d(in_channels, 64, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.conv2 = nn.Conv3d(64, 128, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.conv3 = nn.Conv3d(128, out_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
@@ -508,24 +522,22 @@ class OutputMapper(nn.Module):
     
     def forward(self, batch: Batch) -> torch.Tensor:
         """
-        Reconstructs the prediction back to a tensor of shape [T, C_out, H, W] where T=1.
+        Reconstructs the prediction back to a tensor of shape [B, T, C_out, H, W] where T=1.
         """
         b, t, H, W = next(iter(batch.surf_vars.values())).shape
         
-        # For surf_vars: unsqueeze to add channel dimension: [B, T, 1, H, W]
         surf_list = [v.unsqueeze(2) for v in batch.surf_vars.values()]
-        surf = torch.cat(surf_list, dim=2)  # -> [B, T, 4, H, W]
-        # For static_vars: unsqueeze to add batch and time dims resulting in [1, 1, H, W],
-        # then expand to [B, T, 1, H, W]
-        static_list = [v.unsqueeze(0).unsqueeze(0).expand(b, t, 1, H, W)
-                       for v in batch.static_vars.values()]
-        static = torch.cat(static_list, dim=2)  # -> [B, T, 3, H, W]
-
-        # For atmos_vars: already [B, T, 4, H, W] each; concatenate to get [B, T, 20, H, W]
-        atmos_list = [v for v in batch.atmos_vars.values()]
-        atmos = torch.cat(atmos_list, dim=2)  # -> [B, T, 20, H, W]
+        surf = torch.cat(surf_list, dim=2)  # [B, T, 4, H, W]
         
+        static_list = [v.unsqueeze(0).unsqueeze(0).expand(b, t, 1, H, W) for v in batch.static_vars.values()]
+        static = torch.cat(static_list, dim=2)  # [B, T, 3, H, W]
+        
+        atmos_list = [v for v in batch.atmos_vars.values()]
+        atmos = torch.cat(atmos_list, dim=2)  # [B, T, 5*num_atmos_levels, H, W]
+        
+        # Concatenate all along channel dimension: [B, T, 7 + 5*num_atmos_levels, H, W]
         x = torch.cat([surf, static, atmos], dim=2)
+        # Rearrange to [B, channels, T, H, W] for convolution.
         x = x.permute(0, 2, 1, 3, 4)
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))

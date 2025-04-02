@@ -43,7 +43,7 @@ def train_epoch(model, dataloader, optimizer, criterion, device):
 def validate_epoch(model, dataloader, criterion, device):
     model.eval()
     epoch_loss = 0.0
-    with torch.no_grad():
+    with torch.inference_mode():
         for sample in dataloader:
             batch = sample["batch"].to(device)
             targets = sample["target"].to(device)
@@ -73,9 +73,14 @@ def main(cfg):
         base_model.load_checkpoint(
             "microsoft/aurora", "aurora-0.25-small-pretrained.ckpt"
         )
-    else:
-        base_model = AuroraSmall()
+        atmos_levels = (100, 250, 500, 850)
+    elif cfg.model.big:
+        base_model = Aurora(use_lora=False)
         base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt")
+        atmos_levels = (50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
+    elif cfg.model.big_ft:
+        base_model = Aurora(use_lora=False)
+        base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-finetuned.ckpt")
     
     base_model.to(device)
 
@@ -142,7 +147,8 @@ def main(cfg):
     # params_to_optimize = model.parameters()
 
     ###### V3
-    model = AuroraFlex(base_model=base_model, in_channels=num_species, out_channels=num_species)
+    model = AuroraFlex(base_model=base_model, in_channels=num_species, hidden_channels=cfg.model.hidden_dim,
+                        out_channels=num_species, atmos_levels=atmos_levels)
     params_to_optimize = model.parameters()
     
     model.to(device)
@@ -184,16 +190,16 @@ def main(cfg):
                 mlflow.log_metric("best_loss", best_loss, step=epoch+1)
 
     # final evaluate
-    for sample in val_dataloader:
-        batch = sample["batch"].to(device)
-        target = sample["target"]
-        with torch.inference_mode():
-            prediction = model.forward(batch)
-        plot_eval(
-            batch=batch,
-            prediction_species=prediction,
-            out_dir=plots_dir,
-        )
+    # for sample in val_dataloader:
+    #     batch = sample["batch"].to(device)
+    #     target = sample["target"]
+    #     with torch.inference_mode():
+    #         prediction = model.forward(batch)
+    #     plot_eval(
+    #         batch=batch,
+    #         prediction_species=prediction,
+    #         out_dir=plots_dir,
+    #     )
 
 
 if __name__ == "__main__":
