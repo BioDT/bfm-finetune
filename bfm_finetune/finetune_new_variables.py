@@ -38,7 +38,7 @@ def main(cfg):
 
     output_dir = HydraConfig.get().runtime.output_dir
 
-
+    print(output_dir)
 
     if cfg.model.base_small:
         base_model = AuroraSmall()
@@ -115,13 +115,13 @@ def main(cfg):
     criterion = nn.MSELoss()
 
     # Load checkpoint if available
-    start_epoch, best_loss = load_checkpoint(model, optimizer, checkpoint_path)
+    # start_epoch, best_loss = load_checkpoint(model, optimizer, checkpoint_path)
 
     model.train()
     num_epochs = 10
-    out_dir = Path("outputs")
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    plots_dir = Path(output_dir) / "plots"
+    if not os.path.exists(plots_dir):
+        os.makedirs(plots_dir)
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for sample in dataloader:
@@ -143,7 +143,7 @@ def main(cfg):
             batch=sample["batch"],
             prediction_species=prediction,
             epoch=epoch,
-            out_dir=out_dir,
+            out_dir=plots_dir,
         )
 
 

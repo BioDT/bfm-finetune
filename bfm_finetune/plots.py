@@ -171,10 +171,7 @@ def plot_eval(
 
 def plot_single(t0_species, target_species, prediction_species, times, n_species_to_plot: int, count_above: int, out_dir: Path,
     epoch: int,):
-    fig, axes = plt.subplots(
-        1, 3, figsize=(18, 6), subplot_kw={"projection": ccrs.PlateCarree()}
-    )
-    ax = axes[0]
+    
     europe_extent = [-30, 40, 34.25, 72]
     # europe_extent = TODO: transform back
     lat_fixed = np.linspace(72, 34.25, 152)
@@ -183,12 +180,11 @@ def plot_single(t0_species, target_species, prediction_species, times, n_species
     lon_fixed = np.linspace(-30, 40, 320)
     # Create a meshgrid.
     Lon, Lat = np.meshgrid(lon_fixed, lat_fixed, indexing="xy")
-    ax.set_extent(europe_extent, crs=ccrs.PlateCarree())
-    try:
-        ax.coastlines(resolution="50m")
-    except Exception as e:
-        print("Error drawing coastlines on Timestep 1:", e)
+    
     for species_i in range(n_species_to_plot):
+        fig, axes = plt.subplots(
+            1, 3, figsize=(18, 6), subplot_kw={"projection": ccrs.PlateCarree()}
+        )
         t0_vals = t0_species[species_i, :, :].cpu().numpy()
         target = target_species[species_i, :, :].cpu().numpy()
         prediction = prediction_species[species_i, :, :].cpu().numpy()
@@ -203,6 +199,12 @@ def plot_single(t0_species, target_species, prediction_species, times, n_species
         print(t0_vals.shape, target.shape, prediction.shape)
 
         # subfig 1
+        ax = axes[0]
+        ax.set_extent(europe_extent, crs=ccrs.PlateCarree())
+        try:
+            ax.coastlines(resolution="50m")
+        except Exception as e:
+            print("Error drawing coastlines on Timestep 1:", e)
         cf1 = ax.contourf(
             Lon, Lat, t0_vals, levels=60, cmap="viridis", transform=ccrs.PlateCarree()
         )
