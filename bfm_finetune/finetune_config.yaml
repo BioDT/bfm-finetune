@@ -1,8 +1,15 @@
 training:
   precision_in: high
+  batch_size: 2
+  epochs: 40
+  lr: 5e-4
+  checkpoint_path: #provide the folder of the weights
+  val_every: 5
 
 dataset:
   toy: False
+  num_species: 500
+  num_workers: 15
 
 model:
   base_small: True
