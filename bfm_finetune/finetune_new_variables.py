@@ -150,6 +150,8 @@ def main(cfg):
     optimizer = optim.AdamW(params_to_optimize, lr=cfg.training.lr)
     criterion = nn.MSELoss()
 
+    checkpoint_save_path = Path(output_dir) / "checkpoints"
+
     # Load checkpoint if available
     start_epoch, best_loss = load_checkpoint(model, optimizer, cfg.training.checkpoint_path)
     val_loss = 1_000_000
@@ -178,12 +180,12 @@ def main(cfg):
             
             if val_loss < best_loss:
                 best_loss = val_loss
-                save_checkpoint(model, optimizer, epoch, best_loss, cfg.training.checkpoint_path)
+                save_checkpoint(model, optimizer, epoch, best_loss, checkpoint_save_path)
                 mlflow.log_metric("best_loss", best_loss, step=epoch+1)
 
     # final evaluate
     for sample in val_dataloader:
-        batch = sample["batch"]
+        batch = sample["batch"].to(device)
         target = sample["target"]
         with torch.inference_mode():
             prediction = model.forward(batch)

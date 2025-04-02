@@ -95,12 +95,11 @@ def plot_eval(
     batch: Batch,
     prediction_species: torch.Tensor,
     out_dir: Path,
-    epoch: int,
     n_species_to_plot: int = 5,
 ):
     metadata = batch.metadata
-    lat = metadata.lat.numpy()
-    lon = metadata.lon.numpy()
+    lat = metadata.lat.cpu().numpy()
+    lon = metadata.lon.cpu().numpy()
     min_lon = lon.min()
     max_lon = lon.max()
     min_lat = lat.min()
@@ -126,7 +125,6 @@ def plot_eval(
             n_species_to_plot=n_species_to_plot,
             count_above=count_above,
             out_dir=out_dir,
-            epoch=epoch,
         )
     # columns = 3
     # rows = n_species_to_plot
@@ -169,8 +167,7 @@ def plot_eval(
     # fig.update_layout(geo_dict)
     # fig.update_layout(title="Predictions")
 
-def plot_single(t0_species, target_species, prediction_species, times, n_species_to_plot: int, count_above: int, out_dir: Path,
-    epoch: int,):
+def plot_single(t0_species, target_species, prediction_species, times, n_species_to_plot: int, count_above: int, out_dir: Path):
     
     europe_extent = [-30, 40, 34.25, 72]
     # europe_extent = TODO: transform back
@@ -239,7 +236,7 @@ def plot_single(t0_species, target_species, prediction_species, times, n_species
 
         plt.tight_layout()
         fig.canvas.draw()
-        filename = out_dir / f"eval_epoch_{epoch}_{times[0]}-{times[1]}_species{species_i}.jpeg"
+        filename = out_dir / f"eval_{times[0]}-{times[1]}_species{species_i}.jpeg"
         plt.savefig(filename, dpi=300, bbox_inches="tight")
         plt.show()
         plt.close(fig)

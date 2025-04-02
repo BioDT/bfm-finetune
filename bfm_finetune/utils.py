@@ -95,6 +95,11 @@ def unroll_matrix_into_df(lat_range, lon_range, matrix: np.ndarray):
 
 
 def save_checkpoint(model, optimizer, epoch, loss, checkpoint_folder):
+    if not checkpoint_folder:
+        print("checkpoint_folder not set. not saving.")
+        return
+    if not os.path.exists(checkpoint_folder):
+        os.makedirs(checkpoint_folder)
     file_path = os.path.join(checkpoint_folder, "best_checkpoint.pth")
     checkpoint = {
         "epoch": epoch,
@@ -107,6 +112,9 @@ def save_checkpoint(model, optimizer, epoch, loss, checkpoint_folder):
 
 
 def load_checkpoint(model, optimizer, checkpoint_folder):
+    if not checkpoint_folder:
+        print("checkpoint_folder not set. Starting from scratch.")
+        return 0, float("inf")
     file_path = os.path.join(checkpoint_folder, "best_checkpoint.pth")
     if os.path.isfile(file_path):
         checkpoint = torch.load(file_path)
