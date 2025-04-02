@@ -7,7 +7,13 @@ import torch.nn as nn
 from aurora.batch import Batch
 
 from bfm_finetune.lora_adapter import LoRAAdapter
-from bfm_finetune.new_variable_decoder import NewVariableHead, VectorDecoder, NewModalityEncoder, InputMapper, OutputMapper
+from bfm_finetune.new_variable_decoder import (
+    InputMapper,
+    NewModalityEncoder,
+    NewVariableHead,
+    OutputMapper,
+    VectorDecoder,
+)
 
 
 class ChannelAdapter(nn.Module):
@@ -225,8 +231,8 @@ class AuroraFlex(nn.Module):
         self.hidden_channels = hidden_channels
         self.out_channels = out_channels
 
-        self.encoder = InputMapper(in_channels=1000, timesteps=2, base_channels=64)
-        self.decoder = OutputMapper(in_channels=27, out_channels=1000)
+        self.encoder = InputMapper(in_channels=in_channels, timesteps=2, base_channels=64)
+        self.decoder = OutputMapper(in_channels=27, out_channels=out_channels)
 
         # Freeze pretrained parts.
         for param in self.base_model.encoder.parameters():

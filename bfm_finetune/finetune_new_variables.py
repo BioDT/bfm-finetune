@@ -31,7 +31,7 @@ def finetune_new_variables(use_small=True, use_toy=True):
         embed_dim = 512
     base_model.to(device)
 
-    num_species = 1000  # Our new finetuning dataset has 1000 channels.
+    num_species = 500  # Our new finetuning dataset has 1000 channels.
     geo_size = (152, 320)  # WORKS
     # geo_size = (17, 32)  # WORKS
     batch_size = 1 if use_toy else 2
@@ -86,7 +86,7 @@ def finetune_new_variables(use_small=True, use_toy=True):
     # params_to_optimize = model.parameters()
 
     ###### V3
-    model = AuroraFlex(base_model=base_model)
+    model = AuroraFlex(base_model=base_model, in_channels=num_species, out_channels=num_species)
     params_to_optimize = model.parameters()
     
     model.to(device)
@@ -114,4 +114,4 @@ def finetune_new_variables(use_small=True, use_toy=True):
 
 if __name__ == "__main__":
     # finetune_new_variables(use_toy=True)
-    finetune_new_variables(use_toy=False)
+    finetune_new_variables(use_toy=True)
