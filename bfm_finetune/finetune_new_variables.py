@@ -1,4 +1,6 @@
+import os
 from datetime import datetime
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -14,6 +16,7 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
+from bfm_finetune.plots import plot_eval
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -95,7 +98,10 @@ def finetune_new_variables(use_small=True, use_toy=True):
     criterion = nn.MSELoss()
 
     model.train()
-    num_epochs = 20
+    num_epochs = 10
+    out_dir = Path("outputs")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for sample in dataloader:
@@ -110,8 +116,17 @@ def finetune_new_variables(use_small=True, use_toy=True):
             optimizer.step()
             epoch_loss += loss.item()
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(dataloader):.4f}")
+        # evaluate
+        with torch.inference_mode():
+            prediction = model.forward(batch)
+        plot_eval(
+            batch=sample["batch"],
+            prediction_species=prediction,
+            epoch=epoch,
+            out_dir=out_dir,
+        )
 
 
 if __name__ == "__main__":
     # finetune_new_variables(use_toy=True)
-    finetune_new_variables(use_toy=True)
+    finetune_new_variables(use_toy=False)

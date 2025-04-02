@@ -90,10 +90,12 @@ class AuroraModified(nn.Module):
         if new_input.dim() == 4:
             new_input = new_input.unsqueeze(1)  # (B, 1, C, H, W)
         B, T, C_new, H, W = new_input.shape
+        # print("new_input", new_input.shape)
         expected_T = 2  # If needed, replicate the time dimension.
         if T < expected_T:
             new_input = new_input.repeat(1, expected_T, 1, 1, 1)
             T = expected_T
+        # print("new_input", new_input.shape)
 
         # Merge batch and time dimensions, apply adapter, then reshape back.
         new_input_reshaped = new_input.view(B * T, C_new, H, W)
@@ -148,6 +150,7 @@ class AuroraModified(nn.Module):
             # Use the channel adapter to map from 1 to 128 channels.
             # x = self.channel_adapter(x)  # Now x has shape [B, 128, H_lat, W_lat]
             new_output = self.new_head(x)  # New head expects input of 128 channels.
+            # print(f"new_output shape: {new_output.shape}")
             return new_output
         else:
             original_output = self.base_model.decoder(
@@ -156,7 +159,7 @@ class AuroraModified(nn.Module):
                 lead_time=self.base_model.timestep,
                 patch_res=patch_res,
             )
-            # print(original_output.shape)
+            # print(f"original_output shape: {original_output.surf_vars["2t"].shape}")
             return original_output
 
 
@@ -241,7 +244,7 @@ class AuroraFlex(nn.Module):
             param.requires_grad = False
         for param in self.base_model.decoder.parameters():
             param.requires_grad = False
-        print("Initialized AuroraExtend Mod")
+        print("Initialized AuroraFlex Mod")
 
     def forward(self, batch):
         # p = next(self.parameters())

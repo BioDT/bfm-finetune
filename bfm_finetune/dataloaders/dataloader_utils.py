@@ -21,7 +21,8 @@ def collate_batches(batch_list):
     # For static_vars, we simply take the one from the first sample.
     static_vars = batch_list[0].static_vars
     # For metadata, we assume they are the same across samples.
-    metadata = batch_list[0].metadata
+    metadata: Metadata = batch_list[0].metadata
+    metadata.time = tuple(el.metadata.time for el in batch_list) # metadata.time needs to be merged
     return Batch(
         surf_vars=surf_vars,
         static_vars=static_vars,
