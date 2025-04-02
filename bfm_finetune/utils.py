@@ -1,7 +1,7 @@
+import os
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-
+import torch
 
 def get_lat_lon_ranges(
     min_lon: float = -30.0,
@@ -90,3 +90,41 @@ def unroll_matrix_into_df(lat_range, lon_range, matrix: np.ndarray):
             )
     df = pd.DataFrame(unrolled)
     return df
+
+
+def save_checkpoint(model, optimizer, epoch, loss, checkpoint_path="checkpoint.pth"):
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "loss": loss,
+    }
+    torch.save(checkpoint, checkpoint_path)
+    print(f"Checkpoint saved at epoch {epoch+1} with loss {loss:.4f}")
+
+def load_checkpoint(model, optimizer, checkpoint_path="checkpoint.pth"):
+    if os.path.isfile(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        start_epoch = checkpoint["epoch"] + 1
+        best_loss = checkpoint["loss"]
+        print(f"Loaded checkpoint from {checkpoint_path} (epoch {start_epoch}, loss: {best_loss:.4f})")
+        return start_epoch, best_loss
+    else:
+        print("No checkpoint found. Starting from scratch.")
+        return 0, float("inf")
+
+
+def seed_everything(seed: int):
+    import random, os
+    import numpy as np
+    import torch
+    
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True

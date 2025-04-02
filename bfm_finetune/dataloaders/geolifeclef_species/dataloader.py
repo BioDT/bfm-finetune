@@ -53,7 +53,7 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
             atmos_vars=atmos_vars,
             metadata=metadata,
         )
-        target = torch.randn(self.num_species, H, W)
-        target = species_distribution[1, :, :, :]
+        # target = torch.randn(self.num_species, H, W)
+        target = species_distribution[1, :, :, :].unsqueeze(0) # Add the time dimension
         # print(target.shape)
         return {"batch": batch, "target": target}
