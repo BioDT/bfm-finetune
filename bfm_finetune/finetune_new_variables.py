@@ -4,9 +4,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from aurora import Aurora, AuroraSmall
-from aurora.batch import Batch, Metadata
-from torch.utils.data import DataLoader, Dataset, default_collate
+from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+import hydra
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import OmegaConf
 
 from bfm_finetune.aurora_mod import AuroraModified, AuroraExtend, AuroraFlex
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
@@ -14,31 +17,45 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
+from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
+
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-def finetune_new_variables(use_small=True, use_toy=True):
-    if use_small:
+@hydra.main(version_base=None, config_path="", config_name="finetune_config")
+def main(cfg):
+
+    print(OmegaConf.to_yaml(cfg))
+    # Set the internal precision for TensorCores (H100s)
+    torch.set_float32_matmul_precision(cfg.training.precision_in)
+
+    # Seed the experiment for numpy, torch and python.random.
+    seed_everything(42)
+
+    output_dir = HydraConfig.get().runtime.output_dir
+
+
+
+    if cfg.model.base_small:
         base_model = AuroraSmall()
         base_model.load_checkpoint(
             "microsoft/aurora", "aurora-0.25-small-pretrained.ckpt"
         )
-        embed_dim = 256
     else:
         base_model = AuroraSmall()
         base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt")
-        embed_dim = 512
+    
     base_model.to(device)
 
     num_species = 500  # Our new finetuning dataset has 1000 channels.
     geo_size = (152, 320)  # WORKS
     # geo_size = (17, 32)  # WORKS
-    batch_size = 1 if use_toy else 2
+    batch_size = 1 if cfg.model.base_small else 2
     latent_dim = 12160
 
 
-    if use_toy:
+    if cfg.dataset.toy:
         dataset = ToyClimateDataset(
             num_samples=100,
             new_input_channels=num_species,
@@ -94,6 +111,9 @@ def finetune_new_variables(use_small=True, use_toy=True):
     optimizer = optim.AdamW(params_to_optimize, lr=1e-3)
     criterion = nn.MSELoss()
 
+    # Load checkpoint if available
+    start_epoch, best_loss = load_checkpoint(model, optimizer, checkpoint_path)
+
     model.train()
     num_epochs = 20
     for epoch in range(num_epochs):
@@ -113,5 +133,4 @@ def finetune_new_variables(use_small=True, use_toy=True):
 
 
 if __name__ == "__main__":
-    # finetune_new_variables(use_toy=True)
-    finetune_new_variables(use_toy=True)
+    main()
