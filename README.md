@@ -65,6 +65,6 @@ The collate function just merges multiple samples into one batch. It doesn’t c
 
 ## TODOs
 
-* [ ] Monitoring & Logging
-* [ ] Checkpointing & Loading
+* [x] Monitoring & Logging
+* [x] Checkpointing & Loading
 * [ ] Result visualisation & comparing with baselines
