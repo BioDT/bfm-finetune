@@ -1,7 +1,9 @@
 import os
 import numpy as np
+import random
 import pandas as pd
 import torch
+from sklearn.metrics import roc_auc_score
 
 def get_lat_lon_ranges(
     min_lon: float = -30.0,
@@ -92,35 +94,34 @@ def unroll_matrix_into_df(lat_range, lon_range, matrix: np.ndarray):
     return df
 
 
-def save_checkpoint(model, optimizer, epoch, loss, checkpoint_path="checkpoint.pth"):
+def save_checkpoint(model, optimizer, epoch, loss, checkpoint_folder):
+    file_path = os.path.join(checkpoint_folder, "best_checkpoint.pth")
     checkpoint = {
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "loss": loss,
     }
-    torch.save(checkpoint, checkpoint_path)
-    print(f"Checkpoint saved at epoch {epoch+1} with loss {loss:.4f}")
+    torch.save(checkpoint, file_path)
+    print(f"Checkpoint saved at epoch {epoch+1} with loss {loss:.4f} to {file_path}")
 
-def load_checkpoint(model, optimizer, checkpoint_path="checkpoint.pth"):
-    if os.path.isfile(checkpoint_path):
-        checkpoint = torch.load(checkpoint_path)
+
+def load_checkpoint(model, optimizer, checkpoint_folder):
+    file_path = os.path.join(checkpoint_folder, "best_checkpoint.pth")
+    if os.path.isfile(file_path):
+        checkpoint = torch.load(file_path)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_epoch = checkpoint["epoch"] + 1
         best_loss = checkpoint["loss"]
-        print(f"Loaded checkpoint from {checkpoint_path} (epoch {start_epoch}, loss: {best_loss:.4f})")
+        print(f"Loaded checkpoint from {file_path} (epoch {start_epoch}, loss: {best_loss:.4f})")
         return start_epoch, best_loss
     else:
-        print("No checkpoint found. Starting from scratch.")
+        print("No checkpoint found in folder. Starting from scratch.")
         return 0, float("inf")
 
 
 def seed_everything(seed: int):
-    import random, os
-    import numpy as np
-    import torch
-    
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
@@ -128,3 +129,174 @@ def seed_everything(seed: int):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
+
+
+######## FOR CLASSIFICATION - Like MALPOLON DOES https://arxiv.org/pdf/2409.18102
+
+def compute_top25_metrics_for_sample(pred, target):
+    """
+    Computes Top-25 metrics for one sample.
+    
+    Args:
+        pred (np.array): 1D array of predictions.
+        target (np.array): 1D array of target values.
+        
+    Returns:
+        dict: Contains precision, recall, f1, auc and the intersection count.
+    """
+    # Determine top-25 indices for predictions and targets.
+    top25_pred_idx = np.argsort(pred)[-25:]
+    top25_target_idx = np.argsort(target)[-25:]
+    pred_set = set(top25_pred_idx)
+    target_set = set(top25_target_idx)
+    intersection = len(pred_set.intersection(target_set))
+    
+    precision = intersection / 25.0
+    recall = intersection / 25.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+    # For AUC: create binary labels (1 for top-25 indices, 0 otherwise).
+    binary_labels = np.zeros_like(target, dtype=int)
+    binary_labels[top25_target_idx] = 1
+    try:
+        auc = roc_auc_score(binary_labels, pred)
+    except ValueError:
+        auc = 0.0
+
+    return {"precision": precision, "recall": recall, "f1": f1, "auc": auc, "intersection": intersection}
+
+
+
+def train_epoch(model, dataloader, optimizer, loss_fn, device):
+    """
+    Performs one training epoch and computes additional metrics.
+    
+    Returns:
+        avg_loss (float): Average loss for the epoch.
+        metrics (dict): Dictionary with sample (macro) and micro averaged metrics.
+    """
+    model.train()
+    total_loss = 0.0
+    all_metrics = []
+    global_true = []
+    global_scores = [] 
+
+    for batch in dataloader:
+        batch = batch.to(device)  # shape: [B, T, C_in, H, W]
+        optimizer.zero_grad()
+        output = model(batch)  # expected shape: [B, T, C_out, H, W] with T=1
+        loss = loss_fn(output, batch)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+
+        output_np = output.detach().cpu().numpy()  # shape: [B, 1, C_out, H, W]
+        target_np = batch.detach().cpu().numpy()     # shape: [B, T, C_in, H, W]
+        B = output_np.shape[0]
+        for i in range(B):
+            pred_sample = output_np[i, 0].flatten()   # flatten [C_out, H, W]
+            target_sample = target_np[i, 0].flatten()   # flatten [C_in, H, W]
+            sample_metrics = compute_top25_metrics_for_sample(pred_sample, target_sample)
+            all_metrics.append(sample_metrics)
+            # For micro aggregation: build a binary ground truth vector per sample.
+            binary_labels = np.zeros_like(target_sample, dtype=int)
+            top25_idx = np.argsort(target_sample)[-25:]
+            binary_labels[top25_idx] = 1
+            global_true.append(binary_labels)
+            global_scores.append(pred_sample)
+
+    avg_loss = total_loss / len(dataloader)
+    # Sample (macro) averages.
+    sample_precision = np.mean([m['precision'] for m in all_metrics])
+    sample_recall = np.mean([m['recall'] for m in all_metrics])
+    sample_f1 = np.mean([m['f1'] for m in all_metrics])
+    sample_auc = np.mean([m['auc'] for m in all_metrics])
+
+    # Micro averages: concatenate all samples.
+    global_true_concat = np.concatenate(global_true)
+    global_scores_concat = np.concatenate(global_scores)
+    try:
+        micro_auc = roc_auc_score(global_true_concat, global_scores_concat)
+    except ValueError:
+        micro_auc = 0.0
+    total_intersection = sum([m['intersection'] for m in all_metrics])
+    micro_precision = total_intersection / (25 * len(all_metrics))
+    micro_recall = total_intersection / (25 * len(all_metrics))
+    micro_f1 = (2 * micro_precision * micro_recall / (micro_precision + micro_recall)
+                if (micro_precision + micro_recall) > 0 else 0.0)
+
+    metrics = {
+        "sample_precision": sample_precision,
+        "sample_recall": sample_recall,
+        "sample_f1": sample_f1,
+        "sample_auc": sample_auc,
+        "micro_precision": micro_precision,
+        "micro_recall": micro_recall,
+        "micro_f1": micro_f1,
+        "micro_auc": micro_auc
+    }
+    return avg_loss, metrics
+
+def validate_epoch(model, dataloader, loss_fn, device):
+    """
+    Performs one validation epoch (without gradient updates) and computes metrics.
+    
+    Returns:
+        avg_loss (float): Average validation loss.
+        metrics (dict): Dictionary with sample (macro) and micro averaged metrics.
+    """
+    model.eval()
+    total_loss = 0.0
+    all_metrics = []
+    global_true = []
+    global_scores = []
+    with torch.no_grad():
+        for batch in dataloader:
+            batch = batch.to(device)
+            output = model(batch)
+            loss = loss_fn(output, batch)
+            total_loss += loss.item()
+
+            output_np = output.detach().cpu().numpy()  # shape: [B, 1, C_out, H, W]
+            target_np = batch.detach().cpu().numpy()     # shape: [B, T, C_in, H, W]
+            B = output_np.shape[0]
+            for i in range(B):
+                pred_sample = output_np[i, 0].flatten()
+                target_sample = target_np[i, 0].flatten()
+                sample_metrics = compute_top25_metrics_for_sample(pred_sample, target_sample)
+                all_metrics.append(sample_metrics)
+                binary_labels = np.zeros_like(target_sample, dtype=int)
+                top25_idx = np.argsort(target_sample)[-25:]
+                binary_labels[top25_idx] = 1
+                global_true.append(binary_labels)
+                global_scores.append(pred_sample)
+
+    avg_loss = total_loss / len(dataloader)
+    sample_precision = np.mean([m['precision'] for m in all_metrics])
+    sample_recall = np.mean([m['recall'] for m in all_metrics])
+    sample_f1 = np.mean([m['f1'] for m in all_metrics])
+    sample_auc = np.mean([m['auc'] for m in all_metrics])
+    
+    global_true_concat = np.concatenate(global_true)
+    global_scores_concat = np.concatenate(global_scores)
+    try:
+        micro_auc = roc_auc_score(global_true_concat, global_scores_concat)
+    except ValueError:
+        micro_auc = 0.0
+    total_intersection = sum([m['intersection'] for m in all_metrics])
+    micro_precision = total_intersection / (25 * len(all_metrics))
+    micro_recall = total_intersection / (25 * len(all_metrics))
+    micro_f1 = (2 * micro_precision * micro_recall / (micro_precision + micro_recall)
+                if (micro_precision + micro_recall) > 0 else 0.0)
+
+    metrics = {
+        "sample_precision": sample_precision,
+        "sample_recall": sample_recall,
+        "sample_f1": sample_f1,
+        "sample_auc": sample_auc,
+        "micro_precision": micro_precision,
+        "micro_recall": micro_recall,
+        "micro_f1": micro_f1,
+        "micro_auc": micro_auc
+    }
+    return avg_loss, metrics

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+import mlflow
 from pathlib import Path
 
 import torch
@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.optim as optim
 from aurora import Aurora, AuroraSmall
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -24,6 +23,35 @@ from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
 from bfm_finetune.plots import plot_eval
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+
+def train_epoch(model, dataloader, optimizer, criterion, device):
+    model.train()
+    epoch_loss = 0.0
+    for sample in dataloader:
+        batch = sample["batch"].to(device)
+        targets = sample["target"].to(device)
+        optimizer.zero_grad()
+        outputs = model(batch)  # e.g., outputs shape: [B, 10000, H, W]
+        loss = criterion(outputs, targets)
+        loss.backward()
+        optimizer.step()
+        epoch_loss += loss.item()
+    epoch_loss /= len(dataloader)
+    return epoch_loss
+
+def validate_epoch(model, dataloader, criterion, device):
+    model.eval()
+    epoch_loss = 0.0
+    with torch.no_grad():
+        for sample in dataloader:
+            batch = sample["batch"].to(device)
+            targets = sample["target"].to(device)
+            outputs = model(batch)
+            loss = criterion(outputs, targets)
+            epoch_loss += loss.item()
+    epoch_loss /= len(dataloader)
+    return epoch_loss
 
 
 @hydra.main(version_base=None, config_path="", config_name="finetune_config")
@@ -51,12 +79,12 @@ def main(cfg):
     
     base_model.to(device)
 
-    num_species = 500  # Our new finetuning dataset has 1000 channels.
+    num_species = cfg.dataset.num_species  # Our new finetuning dataset has 1000 channels.
     geo_size = (152, 320)  # WORKS
     # geo_size = (17, 32)  # WORKS
-    batch_size = 1 if cfg.model.base_small else 2
+    batch_size = 2 if cfg.model.base_small else 1
     latent_dim = 12160
-
+    num_epochs = cfg.training.epochs
 
     if cfg.dataset.toy:
         dataset = ToyClimateDataset(
@@ -67,12 +95,20 @@ def main(cfg):
         )
     else:
         dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species)
-    dataloader = DataLoader(
+    train_dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=True,
         collate_fn=custom_collate_fn,
-        num_workers=15,
+        num_workers=cfg.dataset.num_workers,
+    )
+    # TODO Make it distinct
+    val_dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=custom_collate_fn,
+        num_workers=cfg.dataset.num_workers,
     )
     #######   V1
     # model = AuroraModified(
@@ -111,38 +147,49 @@ def main(cfg):
     
     model.to(device)
     
-    optimizer = optim.AdamW(params_to_optimize, lr=1e-3)
+    optimizer = optim.AdamW(params_to_optimize, lr=cfg.training.lr)
     criterion = nn.MSELoss()
 
     # Load checkpoint if available
-    # start_epoch, best_loss = load_checkpoint(model, optimizer, checkpoint_path)
+    start_epoch, best_loss = load_checkpoint(model, optimizer, cfg.training.checkpoint_path)
+    val_loss = 1_000_000
+    mlflow.set_experiment("BFM_Finetune")
 
-    model.train()
-    num_epochs = 10
     plots_dir = Path(output_dir) / "plots"
     if not os.path.exists(plots_dir):
         os.makedirs(plots_dir)
-    for epoch in range(num_epochs):
-        epoch_loss = 0.0
-        for sample in dataloader:
-            batch = sample["batch"].to(device)
-            targets = sample["target"].to(device)
-            optimizer.zero_grad()
-            outputs = model(batch)  # outputs: (B, 10000, H, W)
-            # print(f"output shape {outputs.shape}")
-            # print(f"target shape {targets.shape}")
-            loss = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.item()
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(dataloader):.4f}")
-        # evaluate
+
+    with mlflow.start_run():
+        mlflow.log_param("num_epochs", cfg.training.epochs)
+        mlflow.log_param("learning_rate", cfg.training.lr)
+        mlflow.log_param("batch_size", cfg.training.batch_size)
+        for epoch in range(start_epoch, num_epochs):
+            train_loss = train_epoch(model, train_dataloader, optimizer, criterion, device)
+
+            if epoch % cfg.training.val_every ==0:
+                val_loss = validate_epoch(model, val_dataloader, criterion, device)
+                print(f"Epoch {epoch+1}/{num_epochs}, Val Loss: {val_loss:.4f}")
+                mlflow.log_metric("val_loss", val_loss, step=epoch+1)
+
+
+            
+            print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}")
+            mlflow.log_metric("train_loss", train_loss, step=epoch+1)
+            
+            if val_loss < best_loss:
+                best_loss = val_loss
+                save_checkpoint(model, optimizer, epoch, best_loss, cfg.training.checkpoint_path)
+                mlflow.log_metric("best_loss", best_loss, step=epoch+1)
+
+    # final evaluate
+    for sample in val_dataloader:
+        batch = sample["batch"]
+        target = sample["target"]
         with torch.inference_mode():
             prediction = model.forward(batch)
         plot_eval(
-            batch=sample["batch"],
+            batch=batch,
             prediction_species=prediction,
-            epoch=epoch,
             out_dir=plots_dir,
         )
 
