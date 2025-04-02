@@ -1,0 +1,8 @@
+training:
+  precision_in: high
+
+dataset:
+  toy: False
+
+model:
+  base_small: True
