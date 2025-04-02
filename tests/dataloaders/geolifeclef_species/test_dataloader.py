@@ -20,11 +20,11 @@ def test_load_one():
     species_distribution = batch.surf_vars["species_distribution"]
     assert species_distribution.shape[0] == 2
     assert species_distribution.shape[1] == 500
-    assert species_distribution.shape[2] == 153
-    assert species_distribution.shape[3] == 321
+    assert species_distribution.shape[2] == 152
+    assert species_distribution.shape[3] == 320
     assert target.shape[0] == 500
-    assert target.shape[1] == 153
-    assert target.shape[2] == 321
+    assert target.shape[1] == 152
+    assert target.shape[2] == 320
 
 
 if __name__ == "__main__":

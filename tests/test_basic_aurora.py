@@ -58,6 +58,9 @@ def do_test_forward(aurora_model, batch):
         assert (
             shape_2t_pred[i] == shape_2t_target[i]
         ), f"shape 2t mismatch (i={i}): {shape_2t_pred}, {shape_2t_target}"
+    assert (
+        shape_2t_pred[1] == 1
+    ), f"shape 2t mismatch (i=1): {shape_2t_pred}, supposed to be 1"
 
 
 def do_test_rollout(aurora_model, batch):
