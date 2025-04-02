@@ -38,6 +38,15 @@ You can manually run the command on all the files (even if not modified) with:
 pre-commit run --all-files
 ```
 
+## Run some finetune workflows
+
+1) In an activated environment, run the script `finetune_new_variables.py`. 
+
+2) You can select to debug your finetune models using the real dataset by changing the flag `finetune_new_variables(use_toy=True)` 
+
+3) Uncomment either one of the 3 Versions of the models to experiment with
+
+
 ## Experimentation - Work in progress
 
 An intro script with a toy example, using the small Aurora model and finetuning with the below logic is `finetune_new_variables.py`.
@@ -51,3 +60,11 @@ The modified model uses a new output head to generate high-dimensional outputs (
 
 - Custom Collate Function:
 The collate function just merges multiple samples into one batch. It doesn’t change how the new input is handled—it merely stacks the custom Batch objects so that the model receives them correctly.
+
+*Limitations: We are currently using the Aurora small for integration experiments. In the future we will adapt the codebase for using the BFM.*
+
+## TODOs
+
+* [ ] Monitoring & Logging
+* [ ] Checkpointing & Loading
+* [ ] Result visualisation & comparing with baselines
