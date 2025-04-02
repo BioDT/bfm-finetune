@@ -22,7 +22,7 @@ from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
 
 from bfm_finetune.plots import plot_eval
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 
 def train_epoch(model, dataloader, optimizer, criterion, device):
@@ -75,8 +75,8 @@ def main(cfg):
         )
         atmos_levels = (100, 250, 500, 850)
     elif cfg.model.big:
-        base_model = Aurora(use_lora=False)
-        base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt")
+        base_model = Aurora(use_lora=False) # stabilise_level_agg=True
+        base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt") # strict=False
         atmos_levels = (50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
     elif cfg.model.big_ft:
         base_model = Aurora(use_lora=False)
@@ -99,18 +99,19 @@ def main(cfg):
             geo_size=geo_size,
         )
     else:
-        dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species)
+        train_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="train")
+        val_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="val")
     train_dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
+        train_dataset,
+        batch_size=cfg.training.batch_size,
         shuffle=True,
         collate_fn=custom_collate_fn,
         num_workers=cfg.dataset.num_workers,
     )
     # TODO Make it distinct
     val_dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
+        val_dataset,
+        batch_size=1,
         shuffle=False,
         collate_fn=custom_collate_fn,
         num_workers=cfg.dataset.num_workers,

@@ -14,12 +14,18 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
         self,
         data_dir: Path = utils.aurorashape_species_location,
         num_species: int = 500,
+        mode: str = "train",
     ):
         self.data_dir = data_dir
         self.num_species = num_species
-        self.files = glob(str(data_dir / "*.pt"))
-        self.files = sorted(self.files)
-        print(f"files {len(self.files)}")
+        if mode == "train":
+            self.files = glob(str(data_dir / "train" / "*.pt"))
+            self.files = sorted(self.files)
+            print(f"files {len(self.files)}")
+        else:
+            self.files = glob(str(data_dir / "val" / "*.pt"))
+            self.files = sorted(self.files)
+            print(f"files {len(self.files)}")
 
     def __len__(self):
         return len(self.files)
