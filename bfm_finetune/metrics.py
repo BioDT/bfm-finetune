@@ -10,19 +10,19 @@ def compute_rmse(pred: torch.Tensor, target: torch.Tensor) -> float:
     Computes RMSE over the entire tensor.
     Both pred and target are expected to have shape [B, 1, C, H, W].
     """
-    return torch.sqrt(torch.mean((pred - target) ** 2)).item()
+    return torch.sqrt(torch.mean((pred - target) ** 2)) # .item() if want the value
 
 def compute_mae(pred: torch.Tensor, target: torch.Tensor) -> float:
     """
     Computes MAE over the entire tensor.
     """
-    return torch.mean(torch.abs(pred - target)).item()
+    return torch.mean(torch.abs(pred - target))
 
 def compute_mape(pred: torch.Tensor, target: torch.Tensor, epsilon: float = 1e-8) -> float:
     """
     Computes MAPE (in percentage) over the entire tensor.
     """
-    return (torch.mean(torch.abs((pred - target) / (target + epsilon))) * 100).item()
+    return (torch.mean(torch.abs((pred - target) / (target + epsilon))) * 100)
 
 def compute_acc(pred: torch.Tensor, target: torch.Tensor) -> float:
     """
@@ -213,76 +213,75 @@ def generate_synthetic_data(B=3, T=1, C=1, H=64, W=64, noise_std=0.1, shift=2):
                 
     return torch.tensor(target), torch.tensor(pred)
 
+def make_test():
+    # Test data: Two samples, 1 timestep, 3 channels, 32x32 spatial dimensions.
+    B, T, C, H, W = 2, 1, 3, 32, 32
 
-# Test data: Two samples, 1 timestep, 3 channels, 32x32 spatial dimensions.
-B, T, C, H, W = 2, 1, 3, 32, 32
+    # Let target be zeros and pred be ones. Expected RMSE = 1, MAE = 1.
+    target_zeros = create_constant_tensor(0, shape=(B, T, C, H, W))
+    pred_ones = create_constant_tensor(1, shape=(B, T, C, H, W))
+    rmse_val = compute_rmse(pred_ones, target_zeros)
+    mae_val = compute_mae(pred_ones, target_zeros)
+    print("Test RMSE (expected 1):", rmse_val)
+    print("Test MAE (expected 1):", mae_val)
 
-# Let target be zeros and pred be ones. Expected RMSE = 1, MAE = 1.
-target_zeros = create_constant_tensor(0, shape=(B, T, C, H, W))
-pred_ones = create_constant_tensor(1, shape=(B, T, C, H, W))
-rmse_val = compute_rmse(pred_ones, target_zeros)
-mae_val = compute_mae(pred_ones, target_zeros)
-print("Test RMSE (expected 1):", rmse_val)
-print("Test MAE (expected 1):", mae_val)
+    # Let target be ones and pred be zeros, so absolute percentage error = 100%.
+    target_ones = create_constant_tensor(1, shape=(B, T, C, H, W))
+    pred_zeros = create_constant_tensor(0, shape=(B, T, C, H, W))
+    mape_val = compute_mape(pred_zeros, target_ones)
+    print("Test MAPE (expected 100):", mape_val)
 
-# Let target be ones and pred be zeros, so absolute percentage error = 100%.
-target_ones = create_constant_tensor(1, shape=(B, T, C, H, W))
-pred_zeros = create_constant_tensor(0, shape=(B, T, C, H, W))
-mape_val = compute_mape(pred_zeros, target_ones)
-print("Test MAPE (expected 100):", mape_val)
+    # For identical tensors, ACC should be 1.
+    acc_val = compute_acc(target_ones, target_ones)
+    print("Test ACC (expected 1):", acc_val)
 
-# For identical tensors, ACC should be 1.
-acc_val = compute_acc(target_ones, target_ones)
-print("Test ACC (expected 1):", acc_val)
+    # For perfect forecast (identical to target), MSSS = 1.
+    msss_val = compute_msss(target_ones, target_ones)
+    print("Test MSSS (expected 1):", msss_val)
 
-# For perfect forecast (identical to target), MSSS = 1.
-msss_val = compute_msss(target_ones, target_ones)
-print("Test MSSS (expected 1):", msss_val)
+    # For identical images, SSIM should be 1.
+    # ssim_val = compute_ssim_torch(target_ones, target_ones)
+    # print("Test SSIM (expected 1):", ssim_val)
 
-# For identical images, SSIM should be 1.
-# ssim_val = compute_ssim_torch(target_ones, target_ones)
-# print("Test SSIM (expected 1):", ssim_val)
+    ssim_val = compute_ssim_metric(target_ones, target_ones)
+    print("Test SSIM sci-image (expected 1):", ssim_val)
 
-ssim_val = compute_ssim_metric(target_ones, target_ones)
-print("Test SSIM sci-image (expected 1):", ssim_val)
+    # For identical images, PSNR should be infinite.
+    # psnr_val = compute_psnr_torch(target_ones, target_ones)
+    # print("Test PSNR (expected inf):", psnr_val)
 
-# For identical images, PSNR should be infinite.
-# psnr_val = compute_psnr_torch(target_ones, target_ones)
-# print("Test PSNR (expected inf):", psnr_val)
+    psnr_val = compute_psnr(target_ones, target_ones)
+    print("Test PSNR Classic (expected inf):", psnr_val)
 
-psnr_val = compute_psnr(target_ones, target_ones)
-print("Test PSNR Classic (expected inf):", psnr_val)
+    # For identical images, SPC should be 1.
+    spc_val = compute_spc(target_ones, target_ones)
+    print("Test SPC (expected 1):", spc_val)
 
-# For identical images, SPC should be 1.
-spc_val = compute_spc(target_ones, target_ones)
-print("Test SPC (expected 1):", spc_val)
-
-# For identical images, FSS should be 1.
-fss_val = compute_fss(target_ones, target_ones)
-print("Test FSS (expected 1):", fss_val)
+    # For identical images, FSS should be 1.
+    fss_val = compute_fss(target_ones, target_ones)
+    print("Test FSS (expected 1):", fss_val)
 
 
-target_tensor, pred_tensor = generate_synthetic_data()
+    target_tensor, pred_tensor = generate_synthetic_data()
 
-# Compute Metrics on Synthetic Data
-print("Realistic Synthetic Data Metrics:")
-print("RMSE:", compute_rmse(pred_tensor, target_tensor))
-print("MAE:", compute_mae(pred_tensor, target_tensor))
-print("MAPE:", compute_mape(pred_tensor, target_tensor))
-print("ACC:", compute_acc(pred_tensor, target_tensor))
-print("MSSS:", compute_msss(pred_tensor, target_tensor))
-print("SSIM:", compute_ssim_metric(pred_tensor, target_tensor))
-print("PSNR:", compute_psnr(pred_tensor, target_tensor))
-print("SPC:", compute_spc(pred_tensor, target_tensor))
-print("FSS:", compute_fss(pred_tensor, target_tensor))
+    # Compute Metrics on Synthetic Data
+    print("Realistic Synthetic Data Metrics:")
+    print("RMSE:", compute_rmse(pred_tensor, target_tensor))
+    print("MAE:", compute_mae(pred_tensor, target_tensor))
+    print("MAPE:", compute_mape(pred_tensor, target_tensor))
+    print("ACC:", compute_acc(pred_tensor, target_tensor))
+    print("MSSS:", compute_msss(pred_tensor, target_tensor))
+    print("SSIM:", compute_ssim_metric(pred_tensor, target_tensor))
+    print("PSNR:", compute_psnr(pred_tensor, target_tensor))
+    print("SPC:", compute_spc(pred_tensor, target_tensor))
+    print("FSS:", compute_fss(pred_tensor, target_tensor))
 
-# Create a dummy metrics dictionary with 4 epochs.
-dummy_metrics = {
-    "RMSE": [rmse_val, rmse_val * 0.9, rmse_val * 1.1, rmse_val * 0.95],
-    "MAE": [mae_val, mae_val * 0.95, mae_val * 1.05, mae_val],
-    "SSIM": [ssim_val, ssim_val * 0.98, ssim_val, ssim_val * 1.0]
-}
+    # Create a dummy metrics dictionary with 4 epochs.
+    dummy_metrics = {
+        "RMSE": [rmse_val, rmse_val * 0.9, rmse_val * 1.1, rmse_val * 0.95],
+        "MAE": [mae_val, mae_val * 0.95, mae_val * 1.05, mae_val],
+        "SSIM": [ssim_val, ssim_val * 0.98, ssim_val, ssim_val * 1.0]
+    }
 
-print("Plotting metrics...")
-plot_metrics(dummy_metrics)
-
+    print("Plotting metrics...")
+    plot_metrics(dummy_metrics)

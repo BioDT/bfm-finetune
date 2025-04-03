@@ -46,6 +46,9 @@ pre-commit run --all-files
 
 3) Uncomment either one of the 3 Versions of the models to experiment with
 
+## Visualise predictions
+
+You can visualise the predictions of the finetuned model by using the notebook `visualise_eval.ipynb`. Just change the **PATH** variable to map the location of your checkpoint.
 
 ## Experimentation - Work in progress
 
@@ -61,10 +64,11 @@ The modified model uses a new output head to generate high-dimensional outputs (
 - Custom Collate Function:
 The collate function just merges multiple samples into one batch. It doesn’t change how the new input is handled—it merely stacks the custom Batch objects so that the model receives them correctly.
 
-*Limitations: We are currently using the Aurora small for integration experiments. In the future we will adapt the codebase for using the BFM.*
+*NOTE: We are currently using the Aurora small for integration experiments. In the future we will adapt the codebase for using the BFM.*
 
 ## TODOs
 
 * [x] Monitoring & Logging
 * [x] Checkpointing & Loading
 * [ ] Result visualisation & comparing with baselines
+* [ ] Validate coordinates relation (dataset - model)

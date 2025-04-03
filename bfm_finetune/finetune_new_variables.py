@@ -19,10 +19,24 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
 from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
-
+from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+
+
+def compute_statio_temporal_loss(outputs, targets):
+    criterion = nn.MSELoss()
+    weight_1 = 10.0
+    weight_2 = 5.0
+    weight_3 = 0.5
+    ssim = compute_ssim_metric(outputs, targets)
+    spc = compute_spc(outputs, targets)
+    rmse_t = criterion(outputs, targets)
+    rmse = compute_rmse(outputs, targets)
+    # print(f"SSIM: {ssim} | SPC: {spc} | RMSE: {rmse}")
+    loss = weight_3 * rmse + weight_1 * (1.0 - ssim) + weight_2 * (1.0 - (spc + 1.0) / 2.0)
+    return loss
 
 
 def train_epoch(model, dataloader, optimizer, criterion, device):
@@ -33,7 +47,8 @@ def train_epoch(model, dataloader, optimizer, criterion, device):
         targets = sample["target"].to(device)
         optimizer.zero_grad()
         outputs = model(batch)  # e.g., outputs shape: [B, 10000, H, W]
-        loss = criterion(outputs, targets)
+        # loss = criterion(outputs, targets)
+        loss = compute_statio_temporal_loss(outputs, targets)
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
@@ -48,7 +63,8 @@ def validate_epoch(model, dataloader, criterion, device):
             batch = sample["batch"].to(device)
             targets = sample["target"].to(device)
             outputs = model(batch)
-            loss = criterion(outputs, targets)
+            # loss = criterion(outputs, targets)
+            loss = compute_statio_temporal_loss(outputs, targets)
             epoch_loss += loss.item()
     epoch_loss /= len(dataloader)
     return epoch_loss
@@ -161,7 +177,7 @@ def main(cfg):
     checkpoint_save_path = Path(output_dir) / "checkpoints"
 
     # Load checkpoint if available
-    start_epoch, best_loss = load_checkpoint(model, optimizer, cfg.training.checkpoint_path)
+    _, best_loss = load_checkpoint(model, optimizer, cfg.training.checkpoint_path)
     val_loss = 1_000_000
     mlflow.set_experiment("BFM_Finetune")
 
@@ -173,7 +189,7 @@ def main(cfg):
         mlflow.log_param("num_epochs", cfg.training.epochs)
         mlflow.log_param("learning_rate", cfg.training.lr)
         mlflow.log_param("batch_size", cfg.training.batch_size)
-        for epoch in range(start_epoch, num_epochs):
+        for epoch in range(1, num_epochs):
             train_loss = train_epoch(model, train_dataloader, optimizer, criterion, device)
 
             if epoch % cfg.training.val_every ==0:
@@ -201,6 +217,7 @@ def main(cfg):
             batch=batch,
             prediction_species=prediction,
             out_dir=plots_dir,
+            save=True
         )
 
 

@@ -96,6 +96,7 @@ def plot_eval(
     prediction_species: torch.Tensor,
     out_dir: Path,
     n_species_to_plot: int = 20,
+    save: str = True
 ):
     metadata = batch.metadata
     lat = metadata.lat.cpu().numpy()
@@ -126,6 +127,7 @@ def plot_eval(
             n_species_to_plot=n_species_to_plot,
             count_above=count_above,
             out_dir=out_dir,
+            save=save,
         )
     # columns = 3
     # rows = n_species_to_plot
@@ -187,7 +189,7 @@ def create_subfig(fig, ax, extent, matrix, title, label="Value"):
     fig.colorbar(cf2, ax=ax, orientation="vertical", label=label)
 
 
-def plot_single(t0_species, target_species, prediction_species, times, extent, n_species_to_plot: int, count_above: int, out_dir: Path):
+def plot_single(t0_species, target_species, prediction_species, times, extent, n_species_to_plot: int, count_above: int, out_dir: Path, save: str):
     # europe_extent = [-30, 40, 34.25, 72]
     # lat_fixed = np.linspace(72, 34.25, 152)
     # lat_fixed = np.sort(lat_fixed)  # Now from 34.25 to 72.0.
@@ -247,7 +249,8 @@ def plot_single(t0_species, target_species, prediction_species, times, extent, n
 
         plt.tight_layout()
         fig.canvas.draw()
-        filename = out_dir / f"eval_species_{species_i}_{times[0]}-{times[1]}.jpeg"
-        plt.savefig(filename, dpi=300, bbox_inches="tight")
+        if save:
+            filename = out_dir / f"eval_species_{species_i}_{times[0]}-{times[1]}.jpeg"
+            plt.savefig(filename, dpi=300, bbox_inches="tight")
         plt.show()
         plt.close(fig)
