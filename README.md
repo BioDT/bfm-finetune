@@ -71,7 +71,7 @@ The collate function just merges multiple samples into one batch. It doesn’t c
 * [x] Monitoring & Logging
 * [x] Checkpointing & Loading
 * [x] Result visualisation
-* [ ] Comparing with baselines
-* [ ] Upsample to (721, 1440) earth grid in the encoder and downsample to (152, 320) in decoder. Edit the coordinates on the dataset
+* [ ] Compare with baselines
+* [x] Upsample to (721, 1440) earth grid in the encoder and downsample to (152, 320) in decoder. Edit the coordinates on the dataset
 * [ ] Normalization on train data 
-* [ ] Validate way of Lat Long (H,W) processed from the model but also from our dataset/plotting functions
+* [ ] Validate way of Lat Long (H,W) processed from the model but also from our dataset/plotting functions 

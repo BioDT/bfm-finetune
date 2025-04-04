@@ -1,6 +1,6 @@
 training:
   precision_in: high
-  batch_size: 2
+  batch_size: 1
   epochs: 101
   lr: 1e-4
   checkpoint_path:
@@ -13,6 +13,7 @@ dataset:
 
 model:
   hidden_dim: 160
+  supersampling: False
   base_small: False
   big: True
   big_ft: False

@@ -30,6 +30,7 @@ def compute_statio_temporal_loss(outputs, targets):
     weight_1 = 10.0
     weight_2 = 5.0
     weight_3 = 0.5
+    # print(f"prediction shape : {outputs.shape} | target shape : {targets.shape} ")
     ssim = compute_ssim_metric(outputs, targets)
     spc = compute_spc(outputs, targets)
     rmse_t = criterion(outputs, targets)
@@ -104,7 +105,9 @@ def main(cfg):
     num_species = cfg.dataset.num_species  # Our new finetuning dataset has 500 channels.
     geo_size = (152, 320)  # WORKS
     # geo_size = (17, 32)  # WORKS
-    batch_size = 2 if cfg.model.base_small else 1
+    if cfg.model.supersampling:
+        geo_size = (721, 1440) #WORKS
+
     latent_dim = 12160
     num_epochs = cfg.training.epochs
 
@@ -166,7 +169,7 @@ def main(cfg):
 
     ###### V3
     model = AuroraFlex(base_model=base_model, in_channels=num_species, hidden_channels=cfg.model.hidden_dim,
-                        out_channels=num_species, atmos_levels=atmos_levels)
+                        out_channels=num_species, geo_size=geo_size, atmos_levels=atmos_levels, supersampling=cfg.model.supersampling)
     params_to_optimize = model.parameters()
     
     model.to(device)
