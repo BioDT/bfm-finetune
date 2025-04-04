@@ -110,7 +110,7 @@ def plot_eval(
     species_distribution = batch.surf_vars["species_distribution"]
     # print("species_distribution", species_distribution.shape) # [B, T=2, S, H, W]
     t0_species = species_distribution[:, 0, :, :, :] # [B, S, H, W]
-    target_species = species_distribution[:, 0, :, :, :]
+    target_species = species_distribution[:, 1, :, :, :]
     # print("prediction", prediction_species.shape) # [B, T=1, S, H, W]
     prediction_species = prediction_species[:, 0, :, :]
 

@@ -101,7 +101,7 @@ def main(cfg):
     
     base_model.to(device)
 
-    num_species = cfg.dataset.num_species  # Our new finetuning dataset has 1000 channels.
+    num_species = cfg.dataset.num_species  # Our new finetuning dataset has 500 channels.
     geo_size = (152, 320)  # WORKS
     # geo_size = (17, 32)  # WORKS
     batch_size = 2 if cfg.model.base_small else 1
