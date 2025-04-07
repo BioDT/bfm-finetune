@@ -5,6 +5,9 @@ training:
   lr: 1e-4
   checkpoint_path:
   val_every: 20
+  backend: fsdp #ddp
+  gpus: [2, 3]
+
 
 dataset:
   toy: False
@@ -13,7 +16,7 @@ dataset:
 
 model:
   hidden_dim: 160
-  supersampling: False
+  supersampling: Yes
   base_small: False
   big: True
   big_ft: False

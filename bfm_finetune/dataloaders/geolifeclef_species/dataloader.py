@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 from aurora.batch import Batch, Metadata
-from torch.utils.data import DataLoader, Dataset, default_collate
+from torch.utils.data import Dataset
 
 from bfm_finetune.dataloaders.geolifeclef_species import utils
 
