@@ -3,6 +3,7 @@ import os
 from glob import glob
 from pathlib import Path
 from typing import List
+import json
 
 import numpy as np
 import pandas as pd
@@ -46,6 +47,28 @@ def get_matrix_for_species(
             result[year_i, species_i, :, :] = matrix_species_year
     return result
 
+def compute_and_write_stats(species_matrix: np.ndarray, output_path: str | Path):
+    # shape: [T, S, H, W]
+    stats = []
+    for species_i in range(species_matrix.shape[1]):
+        single_species_matrix = species_matrix[:, species_i, :, :]
+        min = single_species_matrix.min()
+        max = single_species_matrix.max()
+        mean = single_species_matrix.mean()
+        std = single_species_matrix.std()
+        count = np.count_nonzero(single_species_matrix)
+        stats.append({
+            "species_i": species_i,
+            "min": min,
+            "max": max,
+            "mean": mean,
+            "std": std,
+            "count": count,
+        })
+    with open(output_path, "w") as f:
+        json.dump(stats, f, indent=2)
+
+
 
 if __name__ == "__main__":
     df = load_pa_csv()
@@ -80,21 +103,35 @@ if __name__ == "__main__":
     lon_range[: max_neg + 1] += 360
     lon_range = np.roll(lon_range, shift=-(max_neg + 1))
     species_matrix = np.roll(species_matrix, shift=-(max_neg + 1), axis=3)
-    # and update matrix columns (swap) TODO:
-    print("shape", species_matrix.shape)
+    # stats for each species
+    os.makedirs(utils.aurorashape_species_location, exist_ok=True)
+    train_folder = utils.aurorashape_species_location / "train"
+    val_folder = utils.aurorashape_species_location / "val"
+    os.makedirs(train_folder, exist_ok=True)
+    os.makedirs(val_folder, exist_ok=True)
+    compute_and_write_stats(species_matrix, utils.aurorashape_species_location / "stats.json")
+    # finished
+    print("shape", species_matrix.shape) # [T, S, H, W]
     paired_years_indices = [
         (i, i + 1)
         # we want all the transitions: [0,1], [1,2], [2,3] ...
         for i in range(len(years) - 1)
     ]
     print("year pairs", paired_years_indices)
-    os.makedirs(utils.aurorashape_species_location, exist_ok=True)
     count = 0
     for year1_index, year2_index in tqdm(paired_years_indices, desc="Saving batches"):
         year_1 = years[year1_index]
         year_2 = years[year2_index]
+        # if no split
+        folder = utils.aurorashape_species_location
+        if year_2 == years[-1]:
+            # the last year goes to val
+            folder = val_folder
+        else:
+            # all the other go to train
+            folder = train_folder
         file_path = (
-            utils.aurorashape_species_location / f"yearly_species_{year_1}-{year_2}.pt"
+            folder / f"yearly_species_{year_1}-{year_2}.pt"
         )
         filtered_matrix = species_matrix[[year1_index, year2_index], :, :, :]
         batch_structure = {
