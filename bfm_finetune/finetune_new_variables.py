@@ -22,7 +22,7 @@ from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 
 def compute_statio_temporal_loss(outputs, targets):
@@ -46,10 +46,11 @@ def train_epoch(model, dataloader, optimizer, criterion, device):
     for sample in dataloader:
         batch = sample["batch"].to(device)
         targets = sample["target"].to(device)
+        # print(f"Target_shape: {targets.shape}")
         optimizer.zero_grad()
         outputs = model(batch)  # e.g., outputs shape: [B, 10000, H, W]
-        # loss = criterion(outputs, targets)
-        loss = compute_statio_temporal_loss(outputs, targets)
+        loss = criterion(outputs, targets)
+        # loss = compute_statio_temporal_loss(outputs, targets)
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
@@ -64,8 +65,8 @@ def validate_epoch(model, dataloader, criterion, device):
             batch = sample["batch"].to(device)
             targets = sample["target"].to(device)
             outputs = model(batch)
-            # loss = criterion(outputs, targets)
-            loss = compute_statio_temporal_loss(outputs, targets)
+            loss = criterion(outputs, targets)
+            # loss = compute_statio_temporal_loss(outputs, targets)
             epoch_loss += loss.item()
     epoch_loss /= len(dataloader)
     return epoch_loss
@@ -107,7 +108,8 @@ def main(cfg):
     # geo_size = (17, 32)  # WORKS
     if cfg.model.supersampling:
         geo_size = (721, 1440) #WORKS
-
+    
+    print(f"Coordinate system size {geo_size}")
     latent_dim = 12160
     num_epochs = cfg.training.epochs
 
@@ -216,9 +218,11 @@ def main(cfg):
         target = sample["target"]
         with torch.inference_mode():
             prediction = model.forward(batch)
+        unnormalized_preds = val_dataset.scale_species_distribution(prediction.clone(), unnormalize=True)
         plot_eval(
             batch=batch,
-            prediction_species=prediction,
+            # prediction_species=prediction,
+            prediction_species=unnormalized_preds,
             out_dir=plots_dir,
             save=True
         )

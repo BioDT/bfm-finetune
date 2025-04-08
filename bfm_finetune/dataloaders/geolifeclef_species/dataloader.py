@@ -2,6 +2,7 @@ from datetime import datetime
 from glob import glob
 from pathlib import Path
 import json
+import numpy as np
 
 import torch
 from aurora.batch import Batch, Metadata
@@ -16,9 +17,11 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
         data_dir: Path = utils.aurorashape_species_location,
         num_species: int = 500,
         mode: str = "train",
+        unnormalize: bool = False,
     ):
         self.data_dir = data_dir
         self.num_species = num_species
+        self.unnormalize = unnormalize
         train_dir = data_dir / "train"
         val_dir = data_dir / "val"
         if mode == "train":
@@ -53,7 +56,7 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
         # [T, S, H, W]
         H = species_distribution.shape[2]
         W = species_distribution.shape[3]
-        species_distribution = self.scale_species_distribution(species_distribution)
+        species_distribution = self.scale_species_distribution(species_distribution, unnormalize=self.unnormalize)
         assert (
             species_distribution.shape[1] == self.num_species
         ), f"species_distribution.shape[1]={species_distribution.shape[1]}, self.num_species={self.num_species}"
@@ -67,8 +70,8 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
             metadata=metadata,
         )
         # target = torch.randn(self.num_species, H, W)
-        target = species_distribution[1, :, :, :].unsqueeze(0) # Add the time dimension
-        # print(target.shape)
+        target = species_distribution[1, :, :, :].unsqueeze(0) # Add time dimension
+        # print("Target shape dataset", target.shape)
         return {"batch": batch, "target": target}
     
     def scale_batch(self, batch: Batch, unnormalize: bool = False):
@@ -79,13 +82,67 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
 
     def scale_species_distribution(self, species_distribution: torch.Tensor, unnormalize: bool = False) -> torch.Tensor:
         # TODO: check this function
-        print(species_distribution.shape) # [B, T, S, H, W]
+        # print("Species distribution shape in scale", species_distribution.shape) # [T, S, H, W]
         for species_i in range(species_distribution.shape[1]):
             stats_species = self.stats[species_i]
-            row = species_distribution[:, species_i, :, :, :]
+            row = species_distribution[:, species_i, :, :]
             if unnormalize:
                 row = row * stats_species["std"] + stats_species["mean"]
             else:
                 row = (row - stats_species["mean"]) / stats_species["std"]
-            species_distribution[:, species_i, :, :, :] = row
+            species_distribution[:, species_i, :, :] = row
         return species_distribution
+
+
+def test_normalization_and_denormalization():
+    """
+    Creates a dummy species distribution tensor and a dummy stats structure.
+    Then tests normalization and denormalization.
+    """
+    B, T, S, H, W = 2, 2, 3, 10, 10  # small spatial size for testing.
+    raw_data = torch.rand(B, T, S, H, W) * 100.0
+    
+    dummy_stats = {
+        0: {"species_i": 0, "min": 0.0, "max": 100.0, "mean": 50.0, "std": 10.0, "count": 1000},
+        1: {"species_i": 1, "min": 0.0, "max": 100.0, "mean": 40.0, "std": 8.0, "count": 800},
+        2: {"species_i": 2, "min": 0.0, "max": 100.0, "mean": 60.0, "std": 12.0, "count": 1200},
+    }
+    
+    # Create a dummy dataset object and override self.stats
+    class DummyDataset:
+        def __init__(self):
+            self.stats = dummy_stats
+        def scale_species_distribution(self, species_distribution, unnormalize=False):
+            B, T, S, H, W = species_distribution.shape
+            for species_i in range(S):
+                stats_species = self.stats[species_i]
+                row = species_distribution[:, :, species_i, :, :]
+                if unnormalize:
+                    row = row * stats_species["std"] + stats_species["mean"]
+                else:
+                    row = (row - stats_species["mean"]) / (stats_species["std"] + 1e-8)
+                species_distribution[:, :, species_i, :, :] = row
+            return species_distribution
+        
+    dataset = DummyDataset()
+    
+    normalized = dataset.scale_species_distribution(raw_data.clone(), unnormalize=False)
+    # For species 0: mean=50, std=10, so if raw[0,0,0,0,0]=e.g. 80, normalized=3.0
+    pixel0 = raw_data[0,0,0,0,0].item()
+    normalized0 = normalized[0,0,0,0,0].item()
+    expected0 = (pixel0 - dummy_stats[0]["mean"]) / dummy_stats[0]["std"]
+    print(f"Species 0, pixel[0]: raw={pixel0:.3f}, normalized={normalized0:.3f}, expected={expected0:.3f}")
+    
+    denormalized = dataset.scale_species_distribution(normalized.clone(), unnormalize=True)
+    pixel0_denorm = denormalized[0,0,0,0,0].item()
+    print(f"Species 0, pixel[0] after denorm: {pixel0_denorm:.3f} (should match raw={pixel0:.3f})")
+    
+    assert np.allclose(pixel0, pixel0_denorm, atol=1e-4), "Denormalization failed!"
+    print("Normalization and denormalization test passed.")
+
+# Uncomment to check
+# if __name__=="__main__":
+#     # test_normalization_and_denormalization()
+#     train_dataset = GeoLifeCLEFSpeciesDataset(num_species=500, mode="train")
+#     sample = train_dataset[1]
+#     print(sample["batch"])

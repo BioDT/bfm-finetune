@@ -261,7 +261,8 @@ class AuroraFlex(nn.Module):
         encoded_input = self.encoder(x)
         # print("Encoder output", encoded_input)
         # Pass through the Aurora model
-        aurora_output = self.base_model(encoded_input)
+        with torch.inference_mode():
+            aurora_output = self.base_model(encoded_input)
         # print("Aurora output", aurora_output)
         # Decode Aurora output
         decoded_aurora = self.decoder(aurora_output)

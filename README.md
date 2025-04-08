@@ -40,11 +40,19 @@ pre-commit run --all-files
 
 ## Run some finetune workflows
 
+First get some resources if you are in the cluster.
+*Note: set gpus-per-node=2 or more if you planning to be faster!*
+```
+salloc -p gpu_h100 --gpus-per-node=1 -t 01:00:00
+```
+
 1) In an activated environment, run the script `finetune_new_variables.py`. 
 
-2) You can select to debug your finetune models using the real dataset by changing the flag `finetune_new_variables(use_toy=True)` 
+2) You can select to debug your finetune models using the toy dataset by changing the flag `finetune_new_variables(use_toy=True)` 
 
 3) Uncomment either one of the 3 Versions of the models to experiment with
+
+4) You can do parallel training if your hardware supports it, by running the command `finetune_new_variables_multi_gpu.py`. You can edit the `finetune_config.yaml` to support your settings, e.g. fsdp vs ddp or the gpus ids [0,1].
 
 ## Visualise predictions
 
@@ -73,5 +81,5 @@ The collate function just merges multiple samples into one batch. It doesn’t c
 * [x] Result visualisation
 * [ ] Compare with baselines
 * [x] Upsample to (721, 1440) earth grid in the encoder and downsample to (152, 320) in decoder. Edit the coordinates on the dataset
-* [ ] Normalization on train data 
+* [x] Normalization on train data 
 * [ ] Validate way of Lat Long (H,W) processed from the model but also from our dataset/plotting functions 

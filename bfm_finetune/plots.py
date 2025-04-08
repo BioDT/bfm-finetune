@@ -112,7 +112,7 @@ def plot_eval(
     t0_species = species_distribution[:, 0, :, :, :] # [B, S, H, W]
     target_species = species_distribution[:, 1, :, :, :]
     # print("prediction", prediction_species.shape) # [B, T=1, S, H, W]
-    prediction_species = prediction_species[:, 0, :, :]
+    prediction_species = prediction_species[:, 0, :, :, :]
 
     lon_above_loc = np.where(lon > 180)[0]
     count_above = len(lon_above_loc)
