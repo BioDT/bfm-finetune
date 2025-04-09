@@ -2,6 +2,7 @@ import contextlib
 import dataclasses
 from typing import Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 from aurora.batch import Batch
@@ -220,12 +221,12 @@ class AuroraFlex(nn.Module):
     def __init__(
         self,
         base_model: nn.Module,
+        lat_lon: Tuple[np.ndarray, np.ndarray],
         in_channels: int = 1000, # 2 x 500
         hidden_channels: int = 160,
         out_channels: int = 1000,
-        geo_size: Tuple = (721, 1440),
         atmos_levels: Tuple = (100, 250, 500, 850),
-        supersampling: str = False
+        supersampling_cfg = None,
     ):
         """
         Wraps a pretrained Aurora model (e.g. AuroraSmall) to adapt a new input with different channels
@@ -237,8 +238,8 @@ class AuroraFlex(nn.Module):
         self.hidden_channels = hidden_channels
         self.out_channels = out_channels
 
-        self.encoder = InputMapper(in_channels=in_channels, timesteps=2, base_channels=64, geo_size=geo_size, atmos_levels=atmos_levels, upsampling=supersampling)
-        self.decoder = OutputMapper(out_channels=out_channels, atmos_levels=atmos_levels, downsampling=supersampling)
+        self.encoder = InputMapper(in_channels=in_channels, timesteps=2, base_channels=64, upsampling=supersampling_cfg, atmos_levels=atmos_levels)
+        self.decoder = OutputMapper(out_channels=out_channels, atmos_levels=atmos_levels, downsampling=supersampling_cfg, lat_lon=lat_lon)
 
         # Freeze pretrained parts.
         for param in self.base_model.encoder.parameters():

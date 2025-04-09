@@ -2,6 +2,7 @@ from datetime import datetime
 from glob import glob
 from pathlib import Path
 import json
+from typing import Tuple
 import numpy as np
 
 import torch
@@ -92,6 +93,13 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
                 row = (row - stats_species["mean"]) / stats_species["std"]
             species_distribution[:, species_i, :, :] = row
         return species_distribution
+    
+    def get_lat_lon(self) -> Tuple[np.ndarray, np.ndarray]:
+        # returns the lat_lon for the first file
+        item = self[0]
+        metadata = item["batch"].metadata
+        return metadata.lat.numpy(), metadata.lon.numpy()
+
 
 
 def test_normalization_and_denormalization():

@@ -1,9 +1,12 @@
 import os
+from pathlib import Path
+from typing import Tuple
 import numpy as np
 import random
 import pandas as pd
 import torch
 from sklearn.metrics import roc_auc_score
+from omegaconf import OmegaConf
 
 def get_lat_lon_ranges(
     min_lon: float = -30.0,
@@ -44,7 +47,8 @@ def get_lat_lon_ranges(
         lon_range[lon_range < 0] += 360.0
         lon_range.sort()
 
-    return lat_range, lon_range
+    # copy avoids negative strides (not supported by torch.Tensor)
+    return lat_range.copy(), lon_range.copy()
 
 
 def aggregate_into_latlon_grid(
@@ -68,10 +72,17 @@ def aggregate_into_latlon_grid(
     for index, row in df.iterrows():
         lat = row["lat"]
         lon = row["lon"]
-        lat_i = next(i for i, val in enumerate(lat_range_list) if val <= lat + step / 2)
-        lon_i = next(i for i, val in enumerate(lon_range_list) if val >= lon - step / 2)
-        # print(lat_i, lat, lat_range)
-        # raise ValueError(123)
+        lat_i = next(
+            (i for i, val in enumerate(lat_range_list) if val < lat + step / 2 and val >= lat - step / 2),
+            None,
+        )
+        lon_i = next(
+            (i for i, val in enumerate(lon_range_list) if val < lon + step / 2 and val >= lon - step / 2),
+            None,
+        )
+        if lat_i == None or lon_i == None:
+            # not in the grid
+            continue
         matrix[lat_i, lon_i] += 1.0
 
     return matrix
@@ -110,6 +121,18 @@ def save_checkpoint(model, optimizer, epoch, loss, checkpoint_folder):
     torch.save(checkpoint, file_path)
     print(f"Checkpoint saved at epoch {epoch+1} with loss {loss:.4f} to {file_path}")
 
+def get_supersampling_target_lat_lon(supersampling_config) -> Tuple[np.ndarray, np.ndarray] | None:
+    if supersampling_config == None:
+        return None
+    if supersampling_config.enabled:
+        return get_lat_lon_ranges(
+            min_lon=supersampling_config.target_region.min_lon,
+            max_lon=supersampling_config.target_region.max_lon,
+            min_lat=supersampling_config.target_region.min_lat,
+            max_lat=supersampling_config.target_region.max_lat,
+        )
+    else:
+        return None
 
 def load_checkpoint(model, optimizer, checkpoint_folder):
     if not checkpoint_folder:
@@ -137,6 +160,14 @@ def seed_everything(seed: int):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
+
+def load_config(output_dir: str | Path, config_file_name: str = "config.yaml"):
+    config_path = Path(output_dir) / ".hydra"
+    # with initialize(version_base=None, config_path=str(config_path), job_name="test_app"):
+    #     cfg = compose(config_name=config_file_name, overrides=[])
+    #     return cfg
+    cfg = OmegaConf.load(str(config_path / config_file_name))
+    return cfg
 
 
 ######## FOR CLASSIFICATION - Like MALPOLON DOES https://arxiv.org/pdf/2409.18102

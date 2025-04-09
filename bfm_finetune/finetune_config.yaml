@@ -1,8 +1,8 @@
 training:
-  precision_in: high
+  precision_in: highest
   batch_size: 1
-  epochs: 101
-  lr: 1e-4
+  epochs: 201
+  lr: 1e-3
   checkpoint_path:
   val_every: 20
   backend: fsdp #ddp
@@ -16,7 +16,13 @@ dataset:
 
 model:
   hidden_dim: 160
-  supersampling: Yes
+  supersampling:
+    enabled: Yes # Yes / No
+    target_region: # if enabled, target_region is used, otherwise the original data region is used
+      min_lon: 0
+      max_lon: 360
+      min_lat: -90
+      max_lat: 90
   base_small: False
   big: True
   big_ft: False

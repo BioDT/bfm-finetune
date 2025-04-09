@@ -1,10 +1,12 @@
 from typing import Tuple
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from datetime import datetime
 from aurora.batch import Batch, Metadata
+from bfm_finetune.utils import get_supersampling_target_lat_lon
 
 class NewVariableHead(nn.Module):
     def __init__(
@@ -445,7 +447,7 @@ class Upsampler(nn.Module):
     using only learned transposed convolution layers with output_size control.
     Input is expected with shape [B, C, T, 152,320].
     """
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, out_H: int, out_W: int):
         super(Upsampler, self).__init__()
         ## V1
         self.up1 = nn.ConvTranspose3d(in_channels, in_channels, kernel_size=(1,2,2), 
@@ -455,6 +457,8 @@ class Upsampler(nn.Module):
         self.conv_adjust = nn.Conv3d(in_channels, in_channels, kernel_size=(1,3,3), padding=(0,1,1))
         ## V2
         # self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.out_H = out_H
+        self.out_W = out_W
 
     
     def forward(self, x):
@@ -463,7 +467,7 @@ class Upsampler(nn.Module):
         x = self.up1(x)  # now approx (152*2, 320*2) = (304,640)
         x = self.up2(x)  # now approx (304*2,640*2) = (608,1280)
         x = self.conv_adjust(x)  # features refined at (608,1280)
-        x = F.interpolate(x, size=(x.shape[2], 721, 1440), mode='trilinear', align_corners=False)
+        x = F.interpolate(x, size=(x.shape[2], self.out_H, self.out_W), mode='trilinear', align_corners=False)
 
         ## V2
         # x = F.interpolate(x, size=(x.shape[2], 721, 1440), mode='trilinear', align_corners=False)
@@ -478,7 +482,7 @@ class Downsampler(nn.Module):
     using only learned convolution layers with output_size control.
     Input is expected with shape [B, C, T, 721,1440].
     """
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, out_H: int, out_W: int):
         super(Downsampler, self).__init__()
         ## V1
         self.conv1 = nn.Conv3d(in_channels, in_channels, kernel_size=(1,2,2), stride=(1,2,2))
@@ -486,6 +490,8 @@ class Downsampler(nn.Module):
         self.conv_adjust = nn.Conv3d(in_channels, in_channels, kernel_size=(1,3,3), padding=(0,1,1))
         ## V2
         # self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=(1,5,5), padding=1)
+        self.out_H = out_H
+        self.out_W = out_W
     
     
     def forward(self, x):
@@ -495,7 +501,7 @@ class Downsampler(nn.Module):
         x = self.conv2(x)  # approx (360/2,720/2) = (180,360)
         x = self.conv_adjust(x)  # refine features at (180,360)
         # Final adjustment: interpolate to exactly (152,320)
-        x = F.interpolate(x, size=(x.shape[2], 152, 320), mode='trilinear', align_corners=False)
+        x = F.interpolate(x, size=(x.shape[2], self.out_H, self.out_W), mode='trilinear', align_corners=False)
         ## V2
         # x = self.conv(x) 
         # x = F.interpolate(x, size=(x.shape[2], 152, 320), mode='trilinear', align_corners=False)
@@ -503,7 +509,7 @@ class Downsampler(nn.Module):
         return x
 
 class InputMapper(nn.Module):
-    def __init__(self, in_channels=500, timesteps=2, base_channels=64, geo_size=(721, 1440), atmos_levels=(100, 250, 500, 850), upsampling: str = False):
+    def __init__(self, in_channels=500, timesteps=2, base_channels=64, atmos_levels=(100, 250, 500, 850), upsampling=None):
         """
         Args:
             in_channels (int): Number of input channels.
@@ -513,10 +519,10 @@ class InputMapper(nn.Module):
             num_atmos_levels (int): Number of levels for each atmospheric variable.
         """
         super(InputMapper, self).__init__()
-        self.geo_size = geo_size
         self.num_atmos_levels = len(atmos_levels)
         self.atmos_levels = atmos_levels
         self.upsampling = upsampling
+        self.supersampling_target_lat_lon = get_supersampling_target_lat_lon(supersampling_config=self.upsampling)
         out_channels = 7 + 5 * self.num_atmos_levels
         self.init_conv = nn.Conv3d(in_channels, base_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.encoder_conv = nn.Conv3d(base_channels, base_channels * 2, kernel_size=(1, 3, 3),
@@ -526,7 +532,10 @@ class InputMapper(nn.Module):
         self.final_conv = nn.Conv3d(base_channels, out_channels,
                                     kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.relu = nn.ReLU(inplace=True)
-        self.upsample_net = Upsampler(out_channels)
+        if self.supersampling_target_lat_lon:
+            self.out_H = self.supersampling_target_lat_lon[0].shape[0]
+            self.out_W = self.supersampling_target_lat_lon[1].shape[0]
+            self.upsample_net = Upsampler(out_channels, out_H=self.out_H, out_W=self.out_W)
 
     def forward(self, batch):
         """
@@ -535,6 +544,14 @@ class InputMapper(nn.Module):
         Returns:
             A Batch structure with surf_vars, static_vars, atmos_vars, and metadata.
         """
+        if self.supersampling_target_lat_lon:
+            # it means we are upscaling to this
+            aurora_lat = torch.Tensor(self.supersampling_target_lat_lon[0])
+            aurora_lon = torch.Tensor(self.supersampling_target_lat_lon[1])
+        else:
+            # otherwise take the original
+            aurora_lat = batch.metadata.lat
+            aurora_lon = batch.metadata.lon
         x = batch.surf_vars["species_distribution"]
         B, T, C_in, H, W = x.shape
         x = x.permute(0, 2, 1, 3, 4)
@@ -544,7 +561,7 @@ class InputMapper(nn.Module):
         # Optional skip connection.
         x_dec = x_dec + x
         x_out = self.final_conv(x_dec)              # [B, 7+5*num_atmos_levels, T, H, W]
-        if self.upsampling:
+        if self.supersampling_target_lat_lon:
             x_out = self.upsample_net(x_out)
         # Surf_vars: first 4 channels → [B, 4, T, H, W] then permute to [B, T, 4, H, W]
         surf = x_out[:, :4, :, :, :].permute(0, 2, 1, 3, 4)
@@ -561,23 +578,23 @@ class InputMapper(nn.Module):
         # Atmos_vars: remaining channels → [B, 5*num_atmos_levels, T, H, W]
         atmos = x_out[:, 7:, :, :, :]
         # Reshape to [B, 5, num_atmos_levels, T, H, W] then permute to [B, T, 5, num_atmos_levels, H, W]
-        atmos = atmos.view(B, 5, self.num_atmos_levels, T, self.geo_size[0], self.geo_size[1]).permute(0, 3, 1, 2, 4, 5)
+        atmos = atmos.view(B, 5, self.num_atmos_levels, T, aurora_lat.shape[0], aurora_lon.shape[0]).permute(0, 3, 1, 2, 4, 5)
         keys_atmos = ("t", "u", "v", "q", "z")
         atmos_vars = {k: atmos[:, :, i, :, :, :] for i, k in enumerate(keys_atmos)}
 
         # time_stamp = batch.metadata.time[0]
         # print("Input mappers batch timestamp :", time_stamp)
         metadata = Metadata(
-            lat=torch.linspace(90, -90, self.geo_size[0]),
-            lon=torch.linspace(0, 360, self.geo_size[1] + 1)[:-1],
-            time=(datetime(2020, 6, 1, 12, 0),), #time_stamp,
+            lat=aurora_lat,
+            lon=aurora_lon,
+            time=(datetime(2020, 6, 1, 12, 0),), # batch.metadata.time, # TODO
             atmos_levels=self.atmos_levels
         )
         return Batch(surf_vars=surf_vars, static_vars=static_vars, atmos_vars=atmos_vars, metadata=metadata)
 
 
 class OutputMapper(nn.Module):
-    def __init__(self, out_channels=1000, atmos_levels=(100, 250, 500, 850), downsampling: str = False):
+    def __init__(self, out_channels=1000, atmos_levels=(100, 250, 500, 850), lat_lon=Tuple[np.ndarray, np.ndarray], downsampling = None):
         """
         Args:
             num_atmos_levels (Tuple): The levels for each atmospheric variable.
@@ -590,7 +607,7 @@ class OutputMapper(nn.Module):
         self.conv2 = nn.Conv3d(64, 128, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.conv3 = nn.Conv3d(128, out_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.relu = nn.ReLU(inplace=True)
-        self.downsample_net = Downsampler(out_channels)
+        self.downsample_net = Downsampler(out_channels, out_H=lat_lon[0].shape[0], out_W=lat_lon[1].shape[0])
     
     def forward(self, batch: Batch) -> torch.Tensor:
         """

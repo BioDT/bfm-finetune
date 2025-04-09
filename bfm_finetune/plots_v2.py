@@ -9,7 +9,7 @@ EUROPE_EXTENT = [-30, 40, 34.25, 72]
 
 def plot_eval(
     batch,
-    prediction_species: torch.Tensor,
+    prediction_species: torch.Tensor | None,
     out_dir: Path,
     n_species_to_plot: int = 20,
     save: bool = True,
@@ -41,14 +41,15 @@ def plot_eval(
     t0_species = species_distribution[:, 0, :, :, :]   # shape [B, S, H, W]
     target_species = species_distribution[:, 1, :, :, :]
     # shape [B, T=1, S, H, W] => take first time dim
-    prediction_species = prediction_species[:, 0, :, :, :]
+    if prediction_species is not None:
+        prediction_species = prediction_species[:, 0, :, :, :]
 
-    for single_b in range(prediction_species.shape[0]):
+    for single_b in range(t0_species.shape[0]):
         # For each batch element, plot the species.
         plot_single(
             t0_species[single_b],
             target_species[single_b],
-            prediction_species[single_b],
+            prediction_species[single_b] if prediction_species is not None else None,
             times=time[single_b],
             lat=lat,
             lon=lon,
@@ -99,7 +100,7 @@ def create_subfig(fig, ax, lat, lon, matrix, title, label, region_extent):
 def plot_single(
     t0_species: torch.Tensor,
     target_species: torch.Tensor,
-    prediction_species: torch.Tensor,
+    prediction_species: torch.Tensor | None,
     times,
     lat: np.ndarray,
     lon: np.ndarray,
@@ -133,7 +134,8 @@ def plot_single(
         # shape [H, W]
         t0_vals = t0_species[species_i, :, :].cpu().numpy()
         target_vals = target_species[species_i, :, :].cpu().numpy()
-        prediction_vals = prediction_species[species_i, :, :].cpu().numpy()
+        if prediction_species is not None:
+            prediction_vals = prediction_species[species_i, :, :].cpu().numpy()
 
         create_subfig(
             fig=fig, ax=axes[0],
@@ -149,13 +151,14 @@ def plot_single(
             label="Value",
             region_extent=region_extent
         )
-        create_subfig(
-            fig=fig, ax=axes[2],
-            lat=lat, lon=lon, matrix=prediction_vals,
-            title=f"Species {species_i}: Prediction = {times[1]}",
-            label="Value",
-            region_extent=region_extent
-        )
+        if prediction_species is not None:
+            create_subfig(
+                fig=fig, ax=axes[2],
+                lat=lat, lon=lon, matrix=prediction_vals,
+                title=f"Species {species_i}: Prediction = {times[1]}",
+                label="Value",
+                region_extent=region_extent
+            )
 
         plt.tight_layout()
         if save:

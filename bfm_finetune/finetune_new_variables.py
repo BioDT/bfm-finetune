@@ -18,7 +18,7 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
-from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
+from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything, get_supersampling_target_lat_lon, get_lat_lon_ranges
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
@@ -104,25 +104,39 @@ def main(cfg):
     base_model.to(device)
 
     num_species = cfg.dataset.num_species  # Our new finetuning dataset has 500 channels.
-    geo_size = (152, 320)  # WORKS
-    # geo_size = (17, 32)  # WORKS
-    if cfg.model.supersampling:
-        geo_size = (721, 1440) #WORKS
+    # geo_size = (152, 320)  # WORKS
+    # geo_size = (152, 200) # TODO: make this dynamic (200 comes from only positive lon)
+    # # geo_size = (17, 32)  # WORKS
+    # if cfg.model.supersampling:
+    #     geo_size = (721, 1440) #WORKS
+    supersampling_target_lat_lon = get_supersampling_target_lat_lon(cfg.model.supersampling)
+    if supersampling_target_lat_lon:
+        print("supersampling lat-lon", supersampling_target_lat_lon[0].shape, supersampling_target_lat_lon[1].shape)
     
-    print(f"Coordinate system size {geo_size}")
     latent_dim = 12160
     num_epochs = cfg.training.epochs
 
     if cfg.dataset.toy:
-        dataset = ToyClimateDataset(
+        # customizable lat_lon
+        lat_lon = get_lat_lon_ranges()
+        train_dataset = ToyClimateDataset(
             num_samples=100,
             new_input_channels=num_species,
             num_species=num_species,
-            geo_size=geo_size,
+            lat_lon=lat_lon,
+        )
+        val_dataset = ToyClimateDataset(
+            num_samples=20,
+            new_input_channels=num_species,
+            num_species=num_species,
+            lat_lon=lat_lon,
         )
     else:
         train_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="train")
         val_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="val")
+        # get lat_lon from dataset
+        lat_lon = train_dataset.get_lat_lon()
+    print("lat-lon", lat_lon[0].shape, lat_lon[1].shape)
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=cfg.training.batch_size,
@@ -171,7 +185,7 @@ def main(cfg):
 
     ###### V3
     model = AuroraFlex(base_model=base_model, in_channels=num_species, hidden_channels=cfg.model.hidden_dim,
-                        out_channels=num_species, geo_size=geo_size, atmos_levels=atmos_levels, supersampling=cfg.model.supersampling)
+                        out_channels=num_species, lat_lon=lat_lon, supersampling_cfg=cfg.model.supersampling, atmos_levels=atmos_levels)
     params_to_optimize = model.parameters()
     
     model.to(device)
