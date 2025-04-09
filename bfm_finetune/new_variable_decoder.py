@@ -550,9 +550,11 @@ class InputMapper(nn.Module):
             aurora_lon = torch.Tensor(self.supersampling_target_lat_lon[1])
         else:
             # otherwise take the original
-            aurora_lat = batch.metadata.lat
-            aurora_lon = batch.metadata.lon
-        x = batch.surf_vars["species_distribution"]
+            # aurora_lat = batch.metadata.lat
+            # aurora_lon = batch.metadata.lon  
+            aurora_lat = batch["metadata"]["lat"]
+            aurora_lon = batch["metadata"]["lon"]
+        x = batch["species_distribution"]#.to("cuda:2")
         B, T, C_in, H, W = x.shape
         x = x.permute(0, 2, 1, 3, 4)
         x = self.relu(self.init_conv(x))          # [B, base_channels, T, H, W]
@@ -594,7 +596,7 @@ class InputMapper(nn.Module):
 
 
 class OutputMapper(nn.Module):
-    def __init__(self, out_channels=1000, atmos_levels=(100, 250, 500, 850), lat_lon=Tuple[np.ndarray, np.ndarray], downsampling = None):
+    def __init__(self, lat_lon: Tuple[np.ndarray, np.ndarray], out_channels=1000, atmos_levels=(100, 250, 500, 850), downsampling = None):
         """
         Args:
             num_atmos_levels (Tuple): The levels for each atmospheric variable.

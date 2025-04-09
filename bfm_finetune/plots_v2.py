@@ -30,14 +30,15 @@ def plot_eval(
     if region_extent is None:
         region_extent = EUROPE_EXTENT  # Default bounding box for Europe
 
-    metadata = batch.metadata
-    lat = metadata.lat.cpu().numpy()  # shape (152,)
-    lon = metadata.lon.cpu().numpy()  # shape (320,)
+    metadata = batch["metadata"]
+    lat = metadata["lat"].cpu().numpy()  # shape (152,)
+    lon = metadata["lon"].cpu().numpy()  # shape (320,)
+    print(lon.min(), lon.max())
 
-    time = metadata.time  # e.g. (datetime1, datetime2)
+    time = metadata["time"]  # e.g. (datetime1, datetime2)
 
     # shape [B, T=2, S, H, W]
-    species_distribution = batch.surf_vars["species_distribution"]
+    species_distribution = batch["species_distribution"]
     t0_species = species_distribution[:, 0, :, :, :]   # shape [B, S, H, W]
     target_species = species_distribution[:, 1, :, :, :]
     # shape [B, T=1, S, H, W] => take first time dim

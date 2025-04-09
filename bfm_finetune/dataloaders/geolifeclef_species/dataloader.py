@@ -2,7 +2,7 @@ from datetime import datetime
 from glob import glob
 from pathlib import Path
 import json
-from typing import Tuple
+from typing import Literal, Tuple
 import numpy as np
 
 import torch
@@ -10,6 +10,7 @@ from aurora.batch import Batch, Metadata
 from torch.utils.data import Dataset
 
 from bfm_finetune.dataloaders.geolifeclef_species import utils
+from bfm_finetune.dataloaders.dataloader_utils import manage_negative_lon, manage_negative_lon_dict
 
 
 class GeoLifeCLEFSpeciesDataset(Dataset):
@@ -19,10 +20,12 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
         num_species: int = 500,
         mode: str = "train",
         unnormalize: bool = False,
+        negative_lon_mode: Literal["roll", "exclude", "translate", "ignore"] = "ignore",
     ):
         self.data_dir = data_dir
         self.num_species = num_species
         self.unnormalize = unnormalize
+        self.negative_lon_mode = negative_lon_mode
         train_dir = data_dir / "train"
         val_dir = data_dir / "val"
         if mode == "train":
@@ -46,12 +49,12 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
         lat = data["metadata"]["lat"]
         lon = data["metadata"]["lon"]
         # print(lon)
-        metadata = Metadata(
-            lat=torch.Tensor(lat),
-            lon=torch.Tensor(lon),
-            time=tuple(datetime(el, 1, 1, 12, 0) for el in data["metadata"]["time"]),
-            atmos_levels=(100, 250, 500, 850),
-        )
+        # metadata = Metadata(
+        #     lat=torch.Tensor(lat),
+        #     lon=torch.Tensor(lon),
+        #     time=tuple(datetime(el, 1, 1, 12, 0) for el in data["metadata"]["time"]),
+        #     atmos_levels=(100, 250, 500, 850),
+        # )
         species_distribution = data["species_distribution"]
         # print(species_distribution.shape)
         # [T, S, H, W]
@@ -61,17 +64,26 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
         assert (
             species_distribution.shape[1] == self.num_species
         ), f"species_distribution.shape[1]={species_distribution.shape[1]}, self.num_species={self.num_species}"
-        surf_vars = {"species_distribution": species_distribution}
-        static_vars = {k: torch.randn(H, W) for k in ("lsm", "z", "slt")} # NOT USED
-        atmos_vars = {k: torch.randn(2, 4, H, W) for k in ("z", "u", "v", "t", "q")} # NOT USED
-        batch = Batch(
-            surf_vars=surf_vars,
-            static_vars=static_vars,
-            atmos_vars=atmos_vars,
-            metadata=metadata,
-        )
+        # surf_vars = {"species_distribution": species_distribution}
+        # static_vars = {k: torch.randn(H, W) for k in ("lsm", "z", "slt")} # NOT USED
+        # atmos_vars = {k: torch.randn(2, 4, H, W) for k in ("z", "u", "v", "t", "q")} # NOT USED
+        # batch = Batch(
+        #     surf_vars=surf_vars,
+        #     static_vars=static_vars,
+        #     atmos_vars=atmos_vars,
+        #     metadata=metadata,
+        # )
+        batch = {
+            "species_distribution": species_distribution,
+            "metadata": {
+                "lat": torch.Tensor(lat),
+                "lon": torch.Tensor(lon),
+                "time": tuple(datetime(el, 1, 1, 12, 0) for el in data["metadata"]["time"]),
+            }
+        }
+        batch = manage_negative_lon_dict(batch, mode=self.negative_lon_mode)
         # target = torch.randn(self.num_species, H, W)
-        target = species_distribution[1, :, :, :].unsqueeze(0) # Add time dimension
+        target = batch["species_distribution"][1, :, :, :].unsqueeze(0) # Add time dimension
         # print("Target shape dataset", target.shape)
         return {"batch": batch, "target": target}
     
@@ -97,8 +109,8 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
     def get_lat_lon(self) -> Tuple[np.ndarray, np.ndarray]:
         # returns the lat_lon for the first file
         item = self[0]
-        metadata = item["batch"].metadata
-        return metadata.lat.numpy(), metadata.lon.numpy()
+        metadata = item["batch"]["metadata"]
+        return metadata["lat"].numpy(), metadata["lon"].numpy()
 
 
 

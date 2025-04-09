@@ -13,11 +13,12 @@ dataset:
   toy: False
   num_species: 500
   num_workers: 15
+  negative_lon_mode: translate # roll, exclude, translate, ignore (breaks aurora if supersampling is No)
 
 model:
   hidden_dim: 160
   supersampling:
-    enabled: Yes # Yes / No
+    enabled: No # Yes / No
     target_region: # if enabled, target_region is used, otherwise the original data region is used
       min_lon: 0
       max_lon: 360

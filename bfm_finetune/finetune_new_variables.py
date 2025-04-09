@@ -22,7 +22,7 @@ from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 
 def compute_statio_temporal_loss(outputs, targets):
@@ -44,7 +44,8 @@ def train_epoch(model, dataloader, optimizer, criterion, device):
     model.train()
     epoch_loss = 0.0
     for sample in dataloader:
-        batch = sample["batch"].to(device)
+        batch = sample["batch"]#.to(device)
+        batch["species_distribution"] = batch["species_distribution"].to(device)
         targets = sample["target"].to(device)
         # print(f"Target_shape: {targets.shape}")
         optimizer.zero_grad()
@@ -62,7 +63,8 @@ def validate_epoch(model, dataloader, criterion, device):
     epoch_loss = 0.0
     with torch.inference_mode():
         for sample in dataloader:
-            batch = sample["batch"].to(device)
+            batch = sample["batch"]#.to(device)
+            batch["species_distribution"] = batch["species_distribution"].to(device)
             targets = sample["target"].to(device)
             outputs = model(batch)
             loss = criterion(outputs, targets)
@@ -132,8 +134,8 @@ def main(cfg):
             lat_lon=lat_lon,
         )
     else:
-        train_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="train")
-        val_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="val")
+        train_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="train", negative_lon_mode=cfg.dataset.negative_lon_mode)
+        val_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="val", negative_lon_mode=cfg.dataset.negative_lon_mode)
         # get lat_lon from dataset
         lat_lon = train_dataset.get_lat_lon()
     print("lat-lon", lat_lon[0].shape, lat_lon[1].shape)
@@ -185,7 +187,7 @@ def main(cfg):
 
     ###### V3
     model = AuroraFlex(base_model=base_model, in_channels=num_species, hidden_channels=cfg.model.hidden_dim,
-                        out_channels=num_species, lat_lon=lat_lon, supersampling_cfg=cfg.model.supersampling, atmos_levels=atmos_levels)
+                        out_channels=num_species, lat_lon=lat_lon, supersampling_cfg=cfg.model.supersampling, atmos_levels=atmos_levels,)
     params_to_optimize = model.parameters()
     
     model.to(device)
@@ -228,7 +230,8 @@ def main(cfg):
 
     # final evaluate
     for sample in val_dataloader:
-        batch = sample["batch"].to(device)
+        batch = sample["batch"]# .to(device)
+        batch["species_distribution"] = batch["species_distribution"].to(device)
         target = sample["target"]
         with torch.inference_mode():
             prediction = model.forward(batch)
