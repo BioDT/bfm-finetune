@@ -9,12 +9,15 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
+import typer
 
 from bfm_finetune.dataloaders.geolifeclef_species import utils
 from bfm_finetune.utils import (
     aggregate_into_latlon_grid,
     get_lat_lon_ranges,
 )
+
+app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 
 
 def load_pa_csv() -> pd.DataFrame:
@@ -68,9 +71,10 @@ def compute_and_write_stats(species_matrix: np.ndarray, output_path: str | Path)
     with open(output_path, "w") as f:
         json.dump(stats, f, indent=2)
 
-
-
-if __name__ == "__main__":
+@app.command()
+def main(only_positive_lon: bool = False, roll_negative_lon: bool = True):
+    if only_positive_lon or roll_negative_lon:
+        print("Better to use only_positive_lon or roll_negative_lon only in the DataLoader")
     df = load_pa_csv()
     # select the most frequent species
     occurrences = (
@@ -86,7 +90,9 @@ if __name__ == "__main__":
 
     step = 0.25
     lat_range, lon_range = get_lat_lon_ranges(lat_step=step, lon_step=step)
-    # df.loc[df["lon"] < 0.0, "lon"] += 360.0
+    if only_positive_lon:
+        lon_range = lon_range[lon_range >= 0.0]
+        print("only_positive_lon", len(lon_range))
 
     species_matrix = get_matrix_for_species(
         df=df,
@@ -98,11 +104,16 @@ if __name__ == "__main__":
     )
     # now put lon+360
     lon_neg_loc = np.where(lon_range < 0)[0]
-    max_neg = lon_neg_loc.max()
-    print("max_neg", max_neg)
-    lon_range[: max_neg + 1] += 360
-    lon_range = np.roll(lon_range, shift=-(max_neg + 1))
-    species_matrix = np.roll(species_matrix, shift=-(max_neg + 1), axis=3)
+    if only_positive_lon:
+        assert len(lon_neg_loc) == 0
+        print("not doing roll with only_positive_lon")
+    else:
+        if roll_negative_lon:
+            max_neg = lon_neg_loc.max()
+            print("max_neg", max_neg)
+            lon_range[: max_neg + 1] += 360
+            lon_range = np.roll(lon_range, shift=-(max_neg + 1))
+            species_matrix = np.roll(species_matrix, shift=-(max_neg + 1), axis=3)
     # stats for each species
     os.makedirs(utils.aurorashape_species_location, exist_ok=True)
     train_folder = utils.aurorashape_species_location / "train"
@@ -144,3 +155,7 @@ if __name__ == "__main__":
             },
         }
         torch.save(batch_structure, file_path)
+
+
+if __name__ == "__main__":
+    app()
