@@ -22,7 +22,7 @@ from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 
 def compute_statio_temporal_loss(outputs, targets):
@@ -198,16 +198,7 @@ def main(cfg):
     checkpoint_save_path = Path(output_dir) / "checkpoints"
 
     # Load checkpoint if available
-    #_, best_loss = load_checkpoint(model, optimizer, cfg.training.checkpoint_path)
-        # Load checkpoint if available (non-strict to bypass size mismatches)
-    try:
-        checkpoint = torch.load(cfg.training.checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"], strict=False)
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        best_loss = checkpoint.get("best_loss", 1_000_000)
-    except Exception as e:
-        print("No valid checkpoint loaded:", e)
-        best_loss = 1_000_000
+    _, best_loss = load_checkpoint(model, optimizer, cfg.training.checkpoint_path)
     val_loss = 1_000_000
     mlflow.set_experiment("BFM_Finetune")
 

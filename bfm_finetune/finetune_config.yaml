@@ -1,0 +1,29 @@
+training:
+  precision_in: highest
+  batch_size: 1
+  epochs: 201
+  lr: 1e-3
+  checkpoint_path:
+  val_every: 20
+  backend: fsdp #ddp
+  gpus: [2, 3]
+
+
+dataset:
+  toy: False
+  num_species: 500
+  num_workers: 15
+  negative_lon_mode: translate # roll, exclude, translate, ignore (breaks aurora if supersampling is No)
+
+model:
+  hidden_dim: 160
+  supersampling:
+    enabled: No # Yes / No
+    target_region: # if enabled, target_region is used, otherwise the original data region is used
+      min_lon: 0
+      max_lon: 360
+      min_lat: -90
+      max_lat: 90
+  base_small: False
+  big: True
+  big_ft: False
