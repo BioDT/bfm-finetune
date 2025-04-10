@@ -1,0 +1,24 @@
+training:
+  precision_in: high
+  batch_size: 1
+  epochs: 101
+  lr: 1e-4
+  checkpoint_path: /gpfs/home1/tkhan/bfm-finetune/bfm_finetune/checkpoints
+  val_every: 20
+  save_every: 20
+  #backend: fsdp #ddp
+  gpus: [0, 1]
+
+
+
+dataset:
+  toy: False
+  num_species: 500
+  num_workers: 15
+
+model:
+  hidden_dim: 160
+  supersampling: Yes
+  base_small: True
+  big: False
+  big_ft: False
