@@ -12,6 +12,7 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+from torch.distributed.fsdp import CPUOffload
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -161,7 +162,7 @@ def main_worker(rank, world_size, cfg, output_dir, gpu_ids):
     model.to(device)
 
     if cfg.training.backend.lower() == "fsdp":
-        model = FSDP(model, use_orig_params=True)
+        model = FSDP(model, use_orig_params=True, cpu_offload=CPUOffload(offload_params=True))
         if rank == 0:
             print("Using FSDP for distributed training.")
     else:
