@@ -72,7 +72,7 @@ def compute_and_write_stats(species_matrix: np.ndarray, output_path: str | Path)
         json.dump(stats, f, indent=2)
 
 @app.command()
-def main(only_positive_lon: bool = False, roll_negative_lon: bool = True):
+def main(only_positive_lon: bool = False, roll_negative_lon: bool = False):
     if only_positive_lon or roll_negative_lon:
         print("Better to use only_positive_lon or roll_negative_lon only in the DataLoader")
     df = load_pa_csv()
