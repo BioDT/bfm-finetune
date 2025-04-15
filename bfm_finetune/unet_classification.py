@@ -33,6 +33,84 @@ checkpoint_save_path = "./checkpoints"  # added checkpoint path
 os.makedirs(checkpoint_save_path, exist_ok=True)
 
 
+# Add a helper function to move dictionaries to device
+def to_device(data, device):
+    if isinstance(data, torch.Tensor):
+        return data.to(device)
+    elif isinstance(data, dict):
+        return {k: to_device(v, device) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [to_device(v, device) for v in data]
+    else:
+        return data
+
+
+# Add a function to convert dictionary to Batch object
+def dict_to_batch(batch_dict):
+    """Convert a dictionary to a Batch object with the expected structure."""
+    if isinstance(batch_dict, Batch):
+        return batch_dict
+
+    # Create surf_vars with species_distribution
+    surf_vars = {}
+    species_distribution = None
+
+    # Try to extract species_distribution from different possible locations
+    if "species_distribution" in batch_dict:
+        species_distribution = batch_dict["species_distribution"]
+    elif (
+        "surf_vars" in batch_dict and "species_distribution" in batch_dict["surf_vars"]
+    ):
+        species_distribution = batch_dict["surf_vars"]["species_distribution"]
+
+    # Ensure species_distribution has the correct shape: [B, T, C, H, W]
+    if species_distribution is not None:
+        # Print shape for debugging
+        print(f"Original species_distribution shape: {species_distribution.shape}")
+
+        # Reshape if needed - ensure it has 5 dimensions: [B, T, C, H, W]
+        if len(species_distribution.shape) == 3:  # [C, H, W]
+            species_distribution = species_distribution.unsqueeze(0).unsqueeze(
+                0
+            )  # [1, 1, C, H, W]
+        elif len(species_distribution.shape) == 4:
+            if species_distribution.shape[1] == num_species:  # [B, C, H, W]
+                species_distribution = species_distribution.unsqueeze(
+                    1
+                )  # [B, 1, C, H, W]
+            else:  # [B, T, H, W]
+                species_distribution = species_distribution.unsqueeze(
+                    2
+                )  # [B, T, 1, H, W]
+
+        # Ensure C dimension is num_species
+        B, T, C, H, W = species_distribution.shape
+        if C != num_species:
+            print(f"Warning: Expected {num_species} species channels, got {C}")
+            # If C is 3, it might be RGB channels instead of species
+            if C == 3:
+                # Create a zero tensor with correct shape and put the original data in first 3 channels
+                new_tensor = torch.zeros(
+                    (B, T, num_species, H, W), device=species_distribution.device
+                )
+                new_tensor[:, :, :3, :, :] = species_distribution
+                species_distribution = new_tensor
+
+        print(f"Reshaped species_distribution shape: {species_distribution.shape}")
+        surf_vars["species_distribution"] = species_distribution
+
+    # Get or create metadata
+    metadata = batch_dict.get("metadata", None)
+
+    # Create Batch object
+    return Batch(
+        surf_vars=surf_vars,
+        metadata=metadata,
+        static_vars=batch_dict.get("static_vars", {}),
+        atmos_vars=batch_dict.get("atmos_vars", {}),
+    )
+
+
 def main():
     # Load Pretrained Aurora Backbone
     backbone = AuroraSmall(use_lora=False, autocast=True)
@@ -73,12 +151,63 @@ def main():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
+    # Debug model input/output shapes
+    def debug_model_shapes():
+        # Get a sample batch
+        sample = next(iter(val_loader))
+        batch_dict = to_device(sample["batch"], device)
+
+        # Print shapes before conversion to Batch
+        print("Batch dict keys:", batch_dict.keys())
+        if "species_distribution" in batch_dict:
+            print(
+                "Species distribution shape:", batch_dict["species_distribution"].shape
+            )
+        elif (
+            "surf_vars" in batch_dict
+            and "species_distribution" in batch_dict["surf_vars"]
+        ):
+            print(
+                "Species distribution shape:",
+                batch_dict["surf_vars"]["species_distribution"].shape,
+            )
+
+        # Convert to Batch object
+        batch = dict_to_batch(batch_dict)
+
+        # Print shapes after conversion
+        print("Batch surf_vars keys:", batch.surf_vars.keys())
+        print(
+            "Batch species_distribution shape:",
+            batch.surf_vars["species_distribution"].shape,
+        )
+
+        # Check model's expected input shape
+        print(f"Model expected input: {num_species} channels")
+
+        # Try one forward pass with small subset
+        with torch.no_grad():
+            try:
+                output = model(batch)
+                print("Model output shape:", output.shape)
+                return True
+            except Exception as e:
+                print("Forward pass failed:", str(e))
+                return False
+
+    # Run debug function before training
+    print("=== Running shape debugging ===")
+    if not debug_model_shapes():
+        print("Shape mismatch detected. Please check the model and data dimensions.")
+        return
+
     def train_epoch():
         model.train()
         total_loss = 0.0
         for sample in train_loader:
-            batch = sample["batch"].to(device)
-            target = sample["target"].to(device)
+            batch_dict = to_device(sample["batch"], device)
+            batch = dict_to_batch(batch_dict)
+            target = to_device(sample["target"], device)
             optimizer.zero_grad()
             output = model(batch)
             loss = criterion(output, target)
@@ -92,8 +221,9 @@ def main():
         total_loss = 0.0
         with torch.no_grad():
             for sample in val_loader:
-                batch = sample["batch"].to(device)
-                target = sample["target"].to(device)
+                batch_dict = to_device(sample["batch"], device)
+                batch = dict_to_batch(batch_dict)
+                target = to_device(sample["target"], device)
                 output = model(batch)
                 loss = criterion(output, target)
                 total_loss += loss.item()
@@ -115,7 +245,20 @@ def main():
 
     # Prediction: run model on one validation sample and plot prediction versus target.
     sample = next(iter(val_loader))
-    batch = sample["batch"].to(device)
+    batch_dict = to_device(sample["batch"], device)
+    batch = dict_to_batch(batch_dict)
+    # Fix static_vars shapes
+    B, T = next(iter(batch.surf_vars.values())).shape[:2]
+    for k, v in batch.static_vars.items():
+        if v.dim() == 2 and v.shape[0] == 320 and v.shape[1] == 152:
+            batch.static_vars[k] = v.transpose(0, 1)
+        batch.static_vars[k] = (
+            batch.static_vars[k]
+            .unsqueeze(0)
+            .unsqueeze(0)
+            .unsqueeze(2)
+            .expand(B, T, 1, *batch.static_vars[k].shape)
+        )
     with torch.no_grad():
         prediction = model(batch)
     plots_dir = "./plots"

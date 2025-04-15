@@ -22,7 +22,7 @@ from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def compute_statio_temporal_loss(outputs, targets):

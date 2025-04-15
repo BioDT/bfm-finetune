@@ -60,7 +60,7 @@ def plot_eval(
             save=save,
         )
 
-def create_subfig(fig, ax, lat, lon, matrix, title, label, region_extent):
+def create_subfig(fig, ax, lat, lon, matrix, title, label, region_extent, roll_back=False):
     """
     Creates an individual subplot, using a fixed bounding box (region_extent) for Europe.
     
@@ -73,9 +73,16 @@ def create_subfig(fig, ax, lat, lon, matrix, title, label, region_extent):
         title (str): Title for the subplot.
         label (str): Colorbar label text.
         region_extent (list): [lon_min, lon_max, lat_min, lat_max].
+        roll_back (bool): If True, roll longitudes back to -180 to 180 range.
     """
+    if roll_back:
+        # Roll longitudes back to -180 to 180 range
+        lon = np.where(lon > 180, lon - 360, lon)
+        sort_idx = np.argsort(lon)
+        lon = lon[sort_idx]
+        matrix = matrix[:, sort_idx]
+
     # Create a meshgrid from the original lat/lon (assuming lat and lon match matrix's shape).
-    # matrix: shape [H, W], lat: shape (H,), lon: shape (W,)
     Lon, Lat = np.meshgrid(lon, lat, indexing="xy")
 
     # Set the bounding box to the region_extent
@@ -85,6 +92,9 @@ def create_subfig(fig, ax, lat, lon, matrix, title, label, region_extent):
         ax.coastlines(resolution="50m")
     except Exception as e:
         print("Error drawing coastlines:", e)
+
+    # Clip matrix values to avoid extreme artifacts in visualization
+    matrix = np.clip(matrix, np.percentile(matrix, 1), np.percentile(matrix, 99))
 
     # Plot the data as a filled contour, with 60 levels.
     cf2 = ax.contourf(
@@ -158,7 +168,8 @@ def plot_single(
                 lat=lat, lon=lon, matrix=prediction_vals,
                 title=f"Species {species_i}: Prediction = {times[1]}",
                 label="Value",
-                region_extent=region_extent
+                region_extent=region_extent,
+                roll_back=True
             )
 
         plt.tight_layout()
