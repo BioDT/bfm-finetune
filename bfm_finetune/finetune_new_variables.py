@@ -20,7 +20,7 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
 from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything, get_supersampling_target_lat_lon, get_lat_lon_ranges
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
-from bfm_finetune.plots import plot_eval
+from bfm_finetune.plots_v2 import plot_eval
 
 device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
