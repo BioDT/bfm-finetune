@@ -524,13 +524,13 @@ class InputMapper(nn.Module):
         self.upsampling = upsampling
         self.supersampling_target_lat_lon = get_supersampling_target_lat_lon(supersampling_config=self.upsampling)
         out_channels = 7 + 5 * self.num_atmos_levels
-        self.init_conv = nn.Conv3d(in_channels, base_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.init_conv = nn.Conv3d(in_channels, base_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
         self.encoder_conv = nn.Conv3d(base_channels, base_channels * 2, kernel_size=(1, 3, 3),
-                                      stride=(1, 2, 2), padding=(0, 1, 1))
+                                      stride=(1, 2, 2), padding=(0, 1, 1), padding_mode='circular')
         self.decoder_conv = nn.ConvTranspose3d(base_channels * 2, base_channels,
                                                kernel_size=(1, 2, 2), stride=(1, 2, 2))
         self.final_conv = nn.Conv3d(base_channels, out_channels,
-                                    kernel_size=(1, 3, 3), padding=(0, 1, 1))
+                                    kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
         self.relu = nn.ReLU(inplace=True)
         if self.supersampling_target_lat_lon:
             self.out_H = self.supersampling_target_lat_lon[0].shape[0]
@@ -605,9 +605,9 @@ class OutputMapper(nn.Module):
         super(OutputMapper, self).__init__()
         in_channels = 7 + 5 * len(atmos_levels)
         self.downsampling = downsampling
-        self.conv1 = nn.Conv3d(in_channels, 64, kernel_size=(1, 3, 3), padding=(0, 1, 1))
-        self.conv2 = nn.Conv3d(64, 128, kernel_size=(1, 3, 3), padding=(0, 1, 1))
-        self.conv3 = nn.Conv3d(128, out_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.conv1 = nn.Conv3d(in_channels, 64, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
+        self.conv2 = nn.Conv3d(64, 128, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
+        self.conv3 = nn.Conv3d(128, out_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
         self.relu = nn.ReLU(inplace=True)
         self.downsample_net = Downsampler(out_channels, out_H=lat_lon[0].shape[0], out_W=lat_lon[1].shape[0])
     
