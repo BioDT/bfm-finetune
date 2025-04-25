@@ -1,0 +1,22 @@
+dataset:
+  num_species: 500
+  mode: train
+  negative_lon_mode: none
+
+model:
+  in_channels: ${dataset.num_species}
+  hidden_channels: 160
+  out_channels: ${dataset.num_species}
+  supersampling: false
+
+run:
+  device: cuda:1
+  batch_size: 1
+  output_dir: /home/tkhan/bfm-finetune/outputs
+  num_samples: null # null means use all available samples
+  corr_dim: 50 # number of principal components for correlation matrix
+
+
+aurora:
+  checkpoint: "aurora-0.25-small-pretrained.ckpt"
+  repo: "microsoft/aurora"

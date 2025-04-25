@@ -269,3 +269,7 @@ class AuroraFlex(nn.Module):
         decoded_aurora = self.decoder(aurora_output)
         # print("Decoder output", decoded_aurora)
         return decoded_aurora
+
+
+    def encode_latent(self, batch):
+        return self.encoder(batch)

@@ -111,6 +111,9 @@ def dict_to_batch(batch_dict):
     )
 
 
+__all__ = ["to_device", "dict_to_batch"]
+
+
 def main():
     # Load Pretrained Aurora Backbone
     backbone = AuroraSmall(use_lora=False, autocast=True)
@@ -250,8 +253,6 @@ def main():
     # Fix static_vars shapes
     B, T = next(iter(batch.surf_vars.values())).shape[:2]
     for k, v in batch.static_vars.items():
-        if v.dim() == 2 and v.shape[0] == 320 and v.shape[1] == 152:
-            batch.static_vars[k] = v.transpose(0, 1)
         batch.static_vars[k] = (
             batch.static_vars[k]
             .unsqueeze(0)

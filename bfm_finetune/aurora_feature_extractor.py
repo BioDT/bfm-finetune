@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from aurora.batch import Batch, Metadata
+from dataclasses import replace
+from datetime import datetime  # add this import
 
 
 def extract_features(model, encoded_tensor, latent_dim=12160):
@@ -48,10 +50,11 @@ def extract_features(model, encoded_tensor, latent_dim=12160):
     }
 
     # Create a minimal metadata containing atmos_levels used by normalise()
+    device = encoded_tensor.device
     dummy_metadata = Metadata(
-        time=torch.zeros(1),
-        lat=torch.linspace(90, -90, steps=H),  # strictly decreasing from 90 to -90
-        lon=torch.linspace(0, 359, steps=W),  # strictly increasing in [0, 360)
+        time=[datetime.now()],  # use a list of datetime so .timestamp() works
+        lat=torch.linspace(90, -90, steps=H, device=device, dtype=encoded_tensor.dtype),
+        lon=torch.linspace(0, 359, steps=W, device=device, dtype=encoded_tensor.dtype),
         rollout_step=0,
         atmos_levels=[100, 250, 500, 850],
     )
@@ -67,6 +70,12 @@ def extract_features(model, encoded_tensor, latent_dim=12160):
     with torch.no_grad():
         batch_normalized = batch.normalise(surf_stats=model.surf_stats)
         batch_cropped = batch_normalized.crop(patch_size=model.patch_size)
+
+        # Fix static_vars: match spatial dims of surf_vars to avoid H/W mismatch
+        surf0 = next(iter(batch_cropped.surf_vars.values()))  # Tensor [B, T, H, W]
+        static_zero = torch.zeros_like(surf0)
+        static_vars_fixed = {k: static_zero for k in batch_cropped.static_vars}
+        batch_cropped = replace(batch_cropped, static_vars=static_vars_fixed)
 
         # Get spatial shape after cropping
         H, W = batch_cropped.spatial_shape
@@ -86,11 +95,44 @@ def extract_features(model, encoded_tensor, latent_dim=12160):
         )
 
         # Ensure spatial dimensions match before concatenation
-        if x_surf.shape[-2:] != x_static.shape[-2:]:
-            x_static = F.interpolate(x_static, size=(x_surf.shape[-2], x_surf.shape[-1]), mode="bilinear", align_corners=False)
+        x_surf = batch_cropped.surf_vars["2t"]  # Example surface variable
+        x_static = batch_cropped.static_vars["lsm"]  # Example static variable
 
-        # Concatenate tensors along dimension 2
-        x_surf = torch.cat((x_surf, x_static), dim=2)  # (B, T, V_S + V_Static, H, W)
+        # Debugging: Print shapes before resizing
+        print(
+            f"Before resizing: x_surf shape: {x_surf.shape}, x_static shape: {x_static.shape}"
+        )
+
+        # If x_static is [H, W], add batch/time dims
+        if x_static.dim() == 2:
+            x_static = x_static.unsqueeze(0).unsqueeze(0)
+
+        # If x_surf is (B, T, 1, 152, 320) but x_static is (B, T, 1, 320, 152), swap x_static's last two dims
+        if x_static.shape[-2:] == (320, 152) and x_surf.shape[-2:] == (152, 320):
+            x_static = x_static.permute(0, 1, 2, 4, 3)
+            print("Swapped x_static’s H/W to match x_surf.")
+
+        # Resize x_static to match x_surf
+        if x_surf.shape[-2:] != x_static.shape[-2:]:
+            x_static = F.interpolate(
+                x_static,
+                size=(x_surf.shape[-2], x_surf.shape[-1]),
+                mode="bilinear",
+                align_corners=False,
+            )
+
+        # Debugging: Print shapes after resizing
+        print(
+            f"After resizing: x_surf shape: {x_surf.shape}, x_static shape: {x_static.shape}"
+        )
+
+        # Concatenate along dimension 2
+        try:
+            x_surf = torch.cat((x_surf, x_static), dim=2)
+        except RuntimeError as e:
+            print(f"Concatenation failed: {e}")
+            print(f"x_surf shape: {x_surf.shape}, x_static shape: {x_static.shape}")
+            raise
 
         # Return flat features
         features = x_features.view(B, -1)

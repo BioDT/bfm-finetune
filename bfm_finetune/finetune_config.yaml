@@ -4,7 +4,7 @@ training:
   epochs: 43
   lr: 1e-3
   checkpoint_path:
-  val_every: 20
+  val_every: 5
   backend: fsdp #ddp
   gpus: [0, 1]
 

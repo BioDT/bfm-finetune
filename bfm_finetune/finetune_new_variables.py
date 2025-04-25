@@ -18,7 +18,13 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
-from bfm_finetune.utils import save_checkpoint, load_checkpoint, seed_everything, get_supersampling_target_lat_lon, get_lat_lon_ranges
+from bfm_finetune.utils import (
+    save_checkpoint,
+    load_checkpoint,
+    seed_everything,
+    get_supersampling_target_lat_lon,
+    get_lat_lon_ranges,
+)
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
@@ -36,34 +42,37 @@ def compute_statio_temporal_loss(outputs, targets):
     rmse_t = criterion(outputs, targets)
     rmse = compute_rmse(outputs, targets)
     # print(f"SSIM: {ssim} | SPC: {spc} | RMSE: {rmse}")
-    loss = weight_3 * rmse + weight_1 * (1.0 - ssim) + weight_2 * (1.0 - (spc + 1.0) / 2.0)
+    loss = (
+        weight_3 * rmse + weight_1 * (1.0 - ssim) + weight_2 * (1.0 - (spc + 1.0) / 2.0)
+    )
     return loss
 
 
-def train_epoch(model, dataloader, optimizer, criterion, device):
+def train_epoch(model, dataloader, optimizer, criterion, device, clip_value=1.0):
     model.train()
     epoch_loss = 0.0
     for sample in dataloader:
-        batch = sample["batch"]#.to(device)
+        batch = sample["batch"]
         batch["species_distribution"] = batch["species_distribution"].to(device)
         targets = sample["target"].to(device)
-        # print(f"Target_shape: {targets.shape}")
         optimizer.zero_grad()
-        outputs = model(batch)  # e.g., outputs shape: [B, 10000, H, W]
+        outputs = model(batch)
         loss = criterion(outputs, targets)
-        # loss = compute_statio_temporal_loss(outputs, targets)
         loss.backward()
+        # Clip gradients
+        torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
         optimizer.step()
         epoch_loss += loss.item()
     epoch_loss /= len(dataloader)
     return epoch_loss
+
 
 def validate_epoch(model, dataloader, criterion, device):
     model.eval()
     epoch_loss = 0.0
     with torch.inference_mode():
         for sample in dataloader:
-            batch = sample["batch"]#.to(device)
+            batch = sample["batch"]  # .to(device)
             batch["species_distribution"] = batch["species_distribution"].to(device)
             targets = sample["target"].to(device)
             outputs = model(batch)
@@ -71,6 +80,69 @@ def validate_epoch(model, dataloader, criterion, device):
             # loss = compute_statio_temporal_loss(outputs, targets)
             epoch_loss += loss.item()
     epoch_loss /= len(dataloader)
+
+    # Extract and optionally visualize latent features
+    if hasattr(model, "encode_latent"):
+        all_latents = []
+        all_species_ids = []
+
+        for sample in dataloader:
+            batch = sample["batch"]
+            batch["species_distribution"] = batch["species_distribution"].to(device)
+            targets = sample["target"].to(device)
+
+            # Extract latent representation
+            latent = model.encode_latent(batch)  # assumes method exists
+            if hasattr(latent, "surf_vars"):
+                # flatten surf_vars into a single feature vector
+                tensors = [v.reshape(v.size(0), -1) for v in latent.surf_vars.values()]
+                latent_tensor = torch.cat(tensors, dim=1)
+            else:
+                latent_tensor = latent.reshape(latent.size(0), -1)
+            latent_flat = latent_tensor.cpu().detach().numpy()
+            all_latents.append(latent_flat)
+
+            if "species_id" in batch:
+                all_species_ids.extend(batch["species_id"].cpu().tolist())
+
+        import numpy as np
+        from sklearn.decomposition import PCA
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        all_latents = np.vstack(all_latents)
+        # dynamic PCA components based on data
+        n_samples, n_feats = all_latents.shape
+        n_comp = min(2, n_samples, n_feats)
+        if n_comp < 1:
+            print("Skipping PCA: no data for projection, got", all_latents.shape)
+        else:
+            pca = PCA(n_components=n_comp)
+            proj = pca.fit_transform(all_latents)
+            plt.figure(figsize=(10, 7))
+            if n_comp == 2:
+                sns.scatterplot(
+                    x=proj[:, 0],
+                    y=proj[:, 1],
+                    hue=all_species_ids if all_species_ids else None,
+                    palette="tab20",
+                    legend=False,
+                )
+                plt.xlabel("PC1")
+                plt.ylabel("PC2")
+            else:
+                sns.histplot(
+                    proj[:, 0],
+                    hue=all_species_ids if all_species_ids else None,
+                    palette="tab20",
+                    legend=False,
+                )
+                plt.xlabel("PC1")
+            plt.title("Latent Feature Space by Species (PCA-reduced)")
+            plt.tight_layout()
+            plt.savefig("latent_feature_space.png")
+            plt.close()
+
     return epoch_loss
 
 
@@ -96,25 +168,46 @@ def main(cfg):
         )
         atmos_levels = (100, 250, 500, 850)
     elif cfg.model.big:
-        base_model = Aurora(use_lora=False) # stabilise_level_agg=True
-        base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt") # strict=False
+        base_model = Aurora(use_lora=False)  # stabilise_level_agg=True
+        base_model.load_checkpoint(
+            "microsoft/aurora", "aurora-0.25-pretrained.ckpt"
+        )  # strict=False
         atmos_levels = (50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
     elif cfg.model.big_ft:
         base_model = Aurora(use_lora=False)
         base_model.load_checkpoint("microsoft/aurora", "aurora-0.25-finetuned.ckpt")
-    
+
     base_model.to(device)
 
-    num_species = cfg.dataset.num_species  # Our new finetuning dataset has 500 channels.
+    num_species = (
+        cfg.dataset.num_species
+    )  # Our new finetuning dataset has 500 channels.
     # geo_size = (152, 320)  # WORKS
     # geo_size = (152, 200) # TODO: make this dynamic (200 comes from only positive lon)
     # # geo_size = (17, 32)  # WORKS
     # if cfg.model.supersampling:
     #     geo_size = (721, 1440) #WORKS
-    supersampling_target_lat_lon = get_supersampling_target_lat_lon(cfg.model.supersampling)
+    supersampling_target_lat_lon = get_supersampling_target_lat_lon(
+        cfg.model.supersampling
+    )
     if supersampling_target_lat_lon:
-        print("supersampling lat-lon", supersampling_target_lat_lon[0].shape, supersampling_target_lat_lon[1].shape)
-    
+        if len(supersampling_target_lat_lon) != 2:
+            raise ValueError(
+                "Invalid supersampling_target_lat_lon: Expected a tuple of (lat, lon)."
+            )
+        if (
+            supersampling_target_lat_lon[0].shape[0] <= 0
+            or supersampling_target_lat_lon[1].shape[0] <= 0
+        ):
+            raise ValueError(
+                "Invalid supersampling_target_lat_lon: Latitude or longitude arrays are empty."
+            )
+        print(
+            "supersampling lat-lon",
+            supersampling_target_lat_lon[0].shape,
+            supersampling_target_lat_lon[1].shape,
+        )
+
     latent_dim = 12160
     num_epochs = cfg.training.epochs
 
@@ -134,8 +227,16 @@ def main(cfg):
             lat_lon=lat_lon,
         )
     else:
-        train_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="train", negative_lon_mode=cfg.dataset.negative_lon_mode)
-        val_dataset = GeoLifeCLEFSpeciesDataset(num_species=num_species, mode="val", negative_lon_mode=cfg.dataset.negative_lon_mode)
+        train_dataset = GeoLifeCLEFSpeciesDataset(
+            num_species=num_species,
+            mode="train",
+            negative_lon_mode=cfg.dataset.negative_lon_mode,
+        )
+        val_dataset = GeoLifeCLEFSpeciesDataset(
+            num_species=num_species,
+            mode="val",
+            negative_lon_mode=cfg.dataset.negative_lon_mode,
+        )
         # get lat_lon from dataset
         lat_lon = train_dataset.get_lat_lon()
     print("lat-lon", lat_lon[0].shape, lat_lon[1].shape)
@@ -149,7 +250,7 @@ def main(cfg):
     # TODO Make it distinct
     val_dataloader = DataLoader(
         val_dataset,
-        batch_size=1,
+        batch_size=8,
         shuffle=False,
         collate_fn=custom_collate_fn,
         num_workers=cfg.dataset.num_workers,
@@ -186,12 +287,19 @@ def main(cfg):
     # params_to_optimize = model.parameters()
 
     ###### V3
-    model = AuroraFlex(base_model=base_model, in_channels=num_species, hidden_channels=cfg.model.hidden_dim,
-                        out_channels=num_species, lat_lon=lat_lon, supersampling_cfg=cfg.model.supersampling, atmos_levels=atmos_levels,)
+    model = AuroraFlex(
+        base_model=base_model,
+        in_channels=num_species,
+        hidden_channels=cfg.model.hidden_dim,
+        out_channels=num_species,
+        lat_lon=lat_lon,
+        supersampling_cfg=cfg.model.supersampling,
+        atmos_levels=atmos_levels,
+    )
     params_to_optimize = model.parameters()
-    
+
     model.to(device)
-    
+
     optimizer = optim.AdamW(params_to_optimize, lr=cfg.training.lr)
     criterion = nn.MSELoss()
 
@@ -211,37 +319,41 @@ def main(cfg):
         mlflow.log_param("learning_rate", cfg.training.lr)
         mlflow.log_param("batch_size", cfg.training.batch_size)
         for epoch in range(1, num_epochs):
-            train_loss = train_epoch(model, train_dataloader, optimizer, criterion, device)
+            train_loss = train_epoch(
+                model, train_dataloader, optimizer, criterion, device
+            )
 
-            if epoch % cfg.training.val_every ==0:
+            if epoch % cfg.training.val_every == 0:
                 val_loss = validate_epoch(model, val_dataloader, criterion, device)
                 print(f"Epoch {epoch+1}/{num_epochs}, Val Loss: {val_loss:.4f}")
-                mlflow.log_metric("val_loss", val_loss, step=epoch+1)
+                mlflow.log_metric("val_loss", val_loss, step=epoch + 1)
 
-
-            
             print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}")
-            mlflow.log_metric("train_loss", train_loss, step=epoch+1)
-            
+            mlflow.log_metric("train_loss", train_loss, step=epoch + 1)
+
             if val_loss < best_loss:
                 best_loss = val_loss
-                save_checkpoint(model, optimizer, epoch, best_loss, checkpoint_save_path)
-                mlflow.log_metric("best_loss", best_loss, step=epoch+1)
+                save_checkpoint(
+                    model, optimizer, epoch, best_loss, checkpoint_save_path
+                )
+                mlflow.log_metric("best_loss", best_loss, step=epoch + 1)
 
     # final evaluate
     for sample in val_dataloader:
-        batch = sample["batch"]# .to(device)
+        batch = sample["batch"]  # .to(device)
         batch["species_distribution"] = batch["species_distribution"].to(device)
         target = sample["target"]
         with torch.inference_mode():
             prediction = model.forward(batch)
-        unnormalized_preds = val_dataset.scale_species_distribution(prediction.clone(), unnormalize=True)
+        unnormalized_preds = val_dataset.scale_species_distribution(
+            prediction.clone(), unnormalize=True
+        )
         plot_eval(
             batch=batch,
             # prediction_species=prediction,
             prediction_species=unnormalized_preds,
             out_dir=plots_dir,
-            save=True
+            save=True,
         )
 
 
