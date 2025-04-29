@@ -1,18 +1,24 @@
 import os
+import math
+import numpy as np
+
 import mlflow
 from pathlib import Path
 
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from aurora import Aurora, AuroraSmall
 from torch.utils.data import DataLoader
-
+from torch.optim.lr_scheduler import LambdaLR
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
-from bfm_finetune.aurora_mod import AuroraModified, AuroraExtend, AuroraFlex
+from bfm_finetune.aurora_mod import AuroraModified, AuroraExtend, AuroraFlex, AuroraRaw
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
 from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
@@ -28,8 +34,8 @@ from bfm_finetune.utils import (
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 def compute_statio_temporal_loss(outputs, targets):
     criterion = nn.MSELoss()
@@ -48,7 +54,7 @@ def compute_statio_temporal_loss(outputs, targets):
     return loss
 
 
-def train_epoch(model, dataloader, optimizer, criterion, device, clip_value=1.0):
+def train_epoch(model, dataloader, optimizer, criterion, scheduler, device, clip_value=1.0):
     model.train()
     epoch_loss = 0.0
     for sample in dataloader:
@@ -60,8 +66,9 @@ def train_epoch(model, dataloader, optimizer, criterion, device, clip_value=1.0)
         loss = criterion(outputs, targets)
         loss.backward()
         # Clip gradients
-        torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
         optimizer.step()
+        scheduler.step() # Optional
         epoch_loss += loss.item()
     epoch_loss /= len(dataloader)
     return epoch_loss
@@ -105,11 +112,6 @@ def validate_epoch(model, dataloader, criterion, device):
             if "species_id" in batch:
                 all_species_ids.extend(batch["species_id"].cpu().tolist())
 
-        import numpy as np
-        from sklearn.decomposition import PCA
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-
         all_latents = np.vstack(all_latents)
         # dynamic PCA components based on data
         n_samples, n_feats = all_latents.shape
@@ -145,6 +147,9 @@ def validate_epoch(model, dataloader, criterion, device):
 
     return epoch_loss
 
+def count_trainable_parameters(model: nn.Module) -> int:
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 
 @hydra.main(version_base=None, config_path="", config_name="finetune_config")
 def main(cfg):
@@ -168,9 +173,9 @@ def main(cfg):
         )
         atmos_levels = (100, 250, 500, 850)
     elif cfg.model.big:
-        base_model = Aurora(use_lora=False)  # stabilise_level_agg=True
+        base_model = Aurora(use_lora=True)  # stabilise_level_agg=True
         base_model.load_checkpoint(
-            "microsoft/aurora", "aurora-0.25-pretrained.ckpt"
+            "microsoft/aurora", "aurora-0.25-pretrained.ckpt", strict=False
         )  # strict=False
         atmos_levels = (50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
     elif cfg.model.big_ft:
@@ -255,53 +260,40 @@ def main(cfg):
         collate_fn=custom_collate_fn,
         num_workers=cfg.dataset.num_workers,
     )
-    #######   V1
-    # model = AuroraModified(
-    #     base_model=base_model,
-    #     new_input_channels=num_species,
-    #     use_new_head=True,
-    #     target_size=geo_size,
-    #     latent_dim=latent_dim,
-    # )
-
-    # # Freeze all pretrained parts. We already froze base_model inside AuroraModified.
-    # # Ensure that in the input adapter, only the LoRA parameters are trainable.
-    # for name, param in model.input_adapter.named_parameters():
-    #     if "lora_A" not in name and "lora_B" not in name:
-    #         param.requires_grad = False
-
-    # # Optimizer on the LoRA adapter parameters and new head.
-    # params_to_optimize = (
-    #     list(model.input_adapter.lora_A.parameters())
-    #     + list(model.input_adapter.lora_B.parameters())
-    #     + list(model.new_head.parameters())
-    # )
-
-    ####### V2
-    # model = AuroraExtend(base_model=base_model,
-    #                      latent_dim=latent_dim,
-    #                      in_channels=num_species,
-    #                      hidden_channels=128,
-    #                      out_channels=num_species,
-    #                      target_size=geo_size)
-    # params_to_optimize = model.parameters()
-
     ###### V3
-    model = AuroraFlex(
-        base_model=base_model,
-        in_channels=num_species,
-        hidden_channels=cfg.model.hidden_dim,
-        out_channels=num_species,
-        lat_lon=lat_lon,
-        supersampling_cfg=cfg.model.supersampling,
-        atmos_levels=atmos_levels,
-    )
+    # model = AuroraFlex(
+    #     base_model=base_model,
+    #     in_channels=num_species,
+    #     hidden_channels=cfg.model.hidden_dim,
+    #     out_channels=num_species,
+    #     lat_lon=lat_lon,
+    #     supersampling_cfg=cfg.model.supersampling,
+    #     atmos_levels=atmos_levels,
+    # )
+    ### V4 
+    model = AuroraRaw(base_model=base_model)
+    
     params_to_optimize = model.parameters()
 
     model.to(device)
 
-    optimizer = optim.AdamW(params_to_optimize, lr=cfg.training.lr)
+    optimizer = torch.optim.AdamW(params_to_optimize, lr=cfg.training.lr, 
+                                  weight_decay=0.01, betas=(0.9, 0.95), eps=1e-8,)
     criterion = nn.MSELoss()
+
+    total_steps = num_epochs
+    warmup_steps = int(0.05 * total_steps)   # 5 % warm-up
+    min_lr_ratio = 0.05                      # final LR = 5 % of base
+
+    def lr_lambda(step):
+        if step < warmup_steps:                       # linear warm-up
+            return step / float(max(1, warmup_steps))
+        progress = (step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+        cosine   = 0.5 * (1 + math.cos(math.pi * progress))
+        return min_lr_ratio + (1 - min_lr_ratio) * cosine
+
+    scheduler = LambdaLR(optimizer, lr_lambda)
+
 
     checkpoint_save_path = Path(output_dir) / "checkpoints"
 
@@ -320,7 +312,7 @@ def main(cfg):
         mlflow.log_param("batch_size", cfg.training.batch_size)
         for epoch in range(1, num_epochs):
             train_loss = train_epoch(
-                model, train_dataloader, optimizer, criterion, device
+                model, train_dataloader, optimizer, criterion, scheduler, device
             )
 
             if epoch % cfg.training.val_every == 0:

@@ -1,8 +1,8 @@
 training:
   precision_in: highest
   batch_size: 1
-  epochs: 43
-  lr: 1e-3
+  epochs: 101
+  lr: 3e-5
   checkpoint_path:
   val_every: 5
   backend: fsdp #ddp
