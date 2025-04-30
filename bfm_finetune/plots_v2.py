@@ -169,7 +169,7 @@ def plot_single(
                 title=f"Species {species_i}: Prediction = {times[1]}",
                 label="Value",
                 region_extent=region_extent,
-                roll_back=True
+                roll_back=False
             )
 
         plt.tight_layout()
