@@ -56,3 +56,7 @@ class ToyClimateDataset(Dataset):
         # TODO Validate: Need to add at first dim T=1 for V2 and V3 model implementations
         target = torch.randn(self.num_species, self.H, self.W)
         return {"batch": batch, "target": target}
+    
+    def scale_species_distribution(self, species_distribution: torch.Tensor, unnormalize: bool = False) -> torch.Tensor:
+        # does not do anything, only for interchangeability with the real dataloaders
+        return species_distribution
