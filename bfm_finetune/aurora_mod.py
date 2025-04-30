@@ -1,15 +1,17 @@
 import contextlib
 import dataclasses
-from typing import Tuple
-
+import types
 from datetime import timedelta
+from functools import partial
+from typing import Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch.utils.checkpoint as cp
 from aurora.batch import Batch
+from torch.utils.checkpoint import checkpoint
 
 from bfm_finetune.lora_adapter import LoRAAdapter
 from bfm_finetune.new_variable_decoder import (
@@ -19,16 +21,14 @@ from bfm_finetune.new_variable_decoder import (
     OutputMapper,
     VectorDecoder,
 )
-import torch.utils.checkpoint as cp
-from functools import partial
 
-from torch.utils.checkpoint import checkpoint
-import types
 
 def _wrap_block(block: nn.Module):
     """Return a new forward that runs under torch.utils.checkpoint."""
+
     def _ckpt_forward(*args, **kw):
         return checkpoint(block._orig_forward, *args, **kw)
+
     return _ckpt_forward
 
 
@@ -38,12 +38,13 @@ def enable_swin3d_checkpointing(backbone: nn.Module):
     Call *once* right after model construction.
     """
     for mod in backbone.modules():
-        if mod.__class__.__name__.startswith(("SwinTransformerBlock", "Swin", "PatchMerging")):
+        if mod.__class__.__name__.startswith(
+            ("SwinTransformerBlock", "Swin", "PatchMerging")
+        ):
             # keep reference to original
             mod._orig_forward = mod.forward
             # monkey-patch
             mod.forward = types.MethodType(_wrap_block(mod), mod)
-
 
 
 class ChannelAdapter(nn.Module):
@@ -60,11 +61,11 @@ class AuroraFlex(nn.Module):
         self,
         base_model: nn.Module,
         lat_lon: Tuple[np.ndarray, np.ndarray],
-        in_channels: int = 1000, # 2 x 500
+        in_channels: int = 1000,  # 2 x 500
         hidden_channels: int = 160,
         out_channels: int = 1000,
         atmos_levels: Tuple = (100, 250, 500, 850),
-        supersampling_cfg = None,
+        supersampling_cfg=None,
     ):
         """
         Wraps a pretrained Aurora model (e.g. AuroraSmall) to adapt a new input with different channels
@@ -76,8 +77,19 @@ class AuroraFlex(nn.Module):
         self.hidden_channels = hidden_channels
         self.out_channels = out_channels
 
-        self.encoder = InputMapper(in_channels=in_channels, timesteps=2, base_channels=64, upsampling=supersampling_cfg, atmos_levels=atmos_levels)
-        self.decoder = OutputMapper(out_channels=out_channels, atmos_levels=atmos_levels, downsampling=supersampling_cfg, lat_lon=lat_lon)
+        self.encoder = InputMapper(
+            in_channels=in_channels,
+            timesteps=2,
+            base_channels=64,
+            upsampling=supersampling_cfg,
+            atmos_levels=atmos_levels,
+        )
+        self.decoder = OutputMapper(
+            out_channels=out_channels,
+            atmos_levels=atmos_levels,
+            downsampling=supersampling_cfg,
+            lat_lon=lat_lon,
+        )
 
         # Freeze pretrained parts.
         for param in self.base_model.encoder.parameters():
@@ -104,7 +116,7 @@ class AuroraFlex(nn.Module):
         decoded_aurora = self.decoder(aurora_output)
         # print("Decoder output", decoded_aurora)
         return decoded_aurora
-    
+
 
 # ───────────────────────────── Encoder ────────────────────────────── #
 class TemporalSpatialEncoder(nn.Module):
@@ -114,25 +126,26 @@ class TemporalSpatialEncoder(nn.Module):
 
     Strategy: merge time -> channel (simple, no blur), 1×1 projection, flatten.
     """
+
     def __init__(
         self,
         n_species: int = 500,
         n_timesteps: int = 2,
         embed_dim: int = 512,
-        target_hw: Tuple[int, int] = (180, 360),#(360, 720),
+        target_hw: Tuple[int, int] = (180, 360),  # (360, 720),
     ) -> None:
         super().__init__()
-        in_channels = n_species * n_timesteps           # 1000
+        in_channels = n_species * n_timesteps  # 1000
         self.target_hw = target_hw
         self.proj = nn.Conv2d(in_channels, embed_dim, kernel_size=1, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, T, C, H, W) → (B, T*C, H, W)
         b, t, c, h, w = x.shape
-        x = x.view(b, t * c, h, w)                      # no copy, just reshape
+        x = x.view(b, t * c, h, w)  # no copy, just reshape
         x = F.interpolate(x, size=self.target_hw, mode="nearest")
-        x = self.proj(x)                                # (B, 512, 360, 720)
-        x = x.flatten(2).transpose(1, 2)                # (B, 259 200, 512)
+        x = self.proj(x)  # (B, 512, 360, 720)
+        x = x.flatten(2).transpose(1, 2)  # (B, 259 200, 512)
         return x
 
 
@@ -141,25 +154,26 @@ class TemporalSpatialDecoder(nn.Module):
     Backbone: (B, 259 200, 1024)
     Decoded prediction: (B, 1, 500, 152, 320) -> single future/target map
     """
+
     def __init__(
         self,
         n_species: int = 500,
         in_dim: int = 1024,
-        source_hw: Tuple[int, int] = (180, 360), #(360, 720),
-        final_hw:  Tuple[int, int] = (152, 320),
+        source_hw: Tuple[int, int] = (180, 360),  # (360, 720),
+        final_hw: Tuple[int, int] = (152, 320),
     ) -> None:
         super().__init__()
         self.source_hw = source_hw
-        self.final_hw  = final_hw
+        self.final_hw = final_hw
         self.proj = nn.Conv2d(in_dim, n_species, kernel_size=1, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, p, d = x.shape                               # (B, 259 200, 1024)
+        b, p, d = x.shape  # (B, 259 200, 1024)
         h, w = self.source_hw
-        x = x.transpose(1, 2).reshape(b, d, h, w)       # (B, 1024, 360, 720)
-        x = self.proj(x)                                # (B, 500, 360, 720)
+        x = x.transpose(1, 2).reshape(b, d, h, w)  # (B, 1024, 360, 720)
+        x = self.proj(x)  # (B, 500, 360, 720)
         x = F.interpolate(x, size=self.final_hw, mode="nearest")  # (B, 500, 152, 320)
-        return x.unsqueeze(1)                           # (B, 1, 500, 152, 320)
+        return x.unsqueeze(1)  # (B, 1, 500, 152, 320)
 
 
 def freeze_except_lora(model):
@@ -170,7 +184,7 @@ def freeze_except_lora(model):
     """
     trainable = []
     for name, param in model.named_parameters():
-        if "lora_" in name:                 # catches lora_matrix_A / B, alpha, etc.
+        if "lora_" in name:  # catches lora_matrix_A / B, alpha, etc.
             param.requires_grad = True
             trainable.append(name)
         else:
@@ -185,6 +199,7 @@ class AuroraRaw(nn.Module):
     and inserts the custom pair above while optionally continously training the backbone
     with the LoRA adapters
     """
+
     def __init__(
         self,
         base_model,
@@ -193,7 +208,7 @@ class AuroraRaw(nn.Module):
     ) -> None:
         super().__init__()
         self.base_model = base_model
-        
+
         # enable_swin3d_checkpointing(self.base_model.backbone)
 
         self.base_model.encoder = nn.Identity()
@@ -202,7 +217,7 @@ class AuroraRaw(nn.Module):
         self.encoder = TemporalSpatialEncoder(n_species=n_species)
         self.decoder = TemporalSpatialDecoder(n_species=n_species)
 
-        freeze_except_lora(base_model) # 
+        freeze_except_lora(base_model)  #
 
         # self.patch_res = (
         #     4,
@@ -218,15 +233,19 @@ class AuroraRaw(nn.Module):
         trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
         print(f"{trainable/1e6:.2f} M / {total/1e6:.2f} M parameters will update")
 
-
     @torch.autocast(device_type="cuda", dtype=torch.bfloat16)
     def forward(self, batch: torch.Tensor) -> torch.Tensor:
         """
         `batch` must be shape (B, N_species, 152, 320) with dtype float32/16.
         """
         x = batch["species_distribution"]
-        tokens = self.encoder(x)                       # (B, 259 200, 512)
+        tokens = self.encoder(x)  # (B, 259 200, 512)
         # with torch.inference_mode():
-        feats = self.base_model.backbone(tokens,lead_time=timedelta(hours=6.0), patch_res=self.patch_res, rollout_step=1)          # (B, 259 200, 1024)
-        recon = self.decoder(feats)                       # (B, N, 152, 320)
+        feats = self.base_model.backbone(
+            tokens,
+            lead_time=timedelta(hours=6.0),
+            patch_res=self.patch_res,
+            rollout_step=1,
+        )  # (B, 259 200, 1024)
+        recon = self.decoder(feats)  # (B, N, 152, 320)
         return recon

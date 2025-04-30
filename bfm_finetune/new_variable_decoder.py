@@ -1,12 +1,14 @@
+from datetime import datetime
 from typing import Tuple
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from datetime import datetime
 from aurora.batch import Batch, Metadata
+
 from bfm_finetune.utils import get_supersampling_target_lat_lon
+
 
 class NewVariableHead(nn.Module):
     def __init__(
@@ -51,11 +53,13 @@ class NewVariableHead(nn.Module):
         )
         return x
 
+
 class Encoder(nn.Module):
     """
     U-Net-like encoder with convolution blocks.
     Here we adapt the in_channels to 1000 to match T=2 x S=500.
     """
+
     def __init__(self, in_channels=1000, base_channels=64):
         super().__init__()
         # You can tune base_channels as needed
@@ -68,22 +72,22 @@ class Encoder(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.encoder2 = nn.Sequential(
-            nn.Conv2d(base_channels, base_channels*2, kernel_size=3, padding=1),
-            nn.BatchNorm2d(base_channels*2),
+            nn.Conv2d(base_channels, base_channels * 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(base_channels * 2),
             nn.ReLU(inplace=True),
-            nn.Conv2d(base_channels*2, base_channels*2, kernel_size=3, padding=1),
-            nn.BatchNorm2d(base_channels*2),
+            nn.Conv2d(base_channels * 2, base_channels * 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(base_channels * 2),
             nn.ReLU(inplace=True),
         )
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
     def forward(self, x):
         # Typical U-Net flow
-        enc1 = self.encoder1(x)     # [B, base_channels, H, W]
-        out1 = self.pool(enc1)      # [B, base_channels, H/2, W/2]
+        enc1 = self.encoder1(x)  # [B, base_channels, H, W]
+        out1 = self.pool(enc1)  # [B, base_channels, H/2, W/2]
 
         enc2 = self.encoder2(out1)  # [B, 2*base_channels, H/2, W/2]
-        out2 = self.pool(enc2)      # [B, 2*base_channels, H/4, W/4]
+        out2 = self.pool(enc2)  # [B, 2*base_channels, H/4, W/4]
 
         return enc1, enc2, out2
 
@@ -93,21 +97,24 @@ class Decoder(nn.Module):
     U-Net-like decoder that upsamples and concatenates encoder outputs.
     We'll produce 500 output channels for S=500 species at the next time step.
     """
+
     def __init__(self, out_channels=500, base_channels=64):
         super().__init__()
-        self.upconv2 = nn.ConvTranspose2d(base_channels*2, base_channels*2, 2, stride=2)
+        self.upconv2 = nn.ConvTranspose2d(
+            base_channels * 2, base_channels * 2, 2, stride=2
+        )
         self.decoder2 = nn.Sequential(
-            nn.Conv2d(base_channels*4, base_channels*2, kernel_size=3, padding=1),
-            nn.BatchNorm2d(base_channels*2),
+            nn.Conv2d(base_channels * 4, base_channels * 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(base_channels * 2),
             nn.ReLU(inplace=True),
-            nn.Conv2d(base_channels*2, base_channels*2, kernel_size=3, padding=1),
-            nn.BatchNorm2d(base_channels*2),
+            nn.Conv2d(base_channels * 2, base_channels * 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(base_channels * 2),
             nn.ReLU(inplace=True),
         )
 
-        self.upconv1 = nn.ConvTranspose2d(base_channels*2, base_channels, 2, stride=2)
+        self.upconv1 = nn.ConvTranspose2d(base_channels * 2, base_channels, 2, stride=2)
         self.decoder1 = nn.Sequential(
-            nn.Conv2d(base_channels*2, base_channels, kernel_size=3, padding=1),
+            nn.Conv2d(base_channels * 2, base_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(base_channels, base_channels, kernel_size=3, padding=1),
@@ -126,20 +133,25 @@ class Decoder(nn.Module):
         # up + concat with enc2
         x = self.upconv2(bottleneck)  # -> [B, base_channels*2, H/2, W/2]
         x = torch.cat([x, enc2], dim=1)  # [B, base_channels*4, H/2, W/2]
-        x = self.decoder2(x)            # [B, base_channels*2, H/2, W/2]
+        x = self.decoder2(x)  # [B, base_channels*2, H/2, W/2]
 
         # up + concat with enc1
-        x = self.upconv1(x)            # -> [B, base_channels, H, W]
-        x = torch.cat([x, enc1], dim=1) # [B, base_channels*2, H, W]
-        x = self.decoder1(x)           # [B, base_channels, H, W]
+        x = self.upconv1(x)  # -> [B, base_channels, H, W]
+        x = torch.cat([x, enc1], dim=1)  # [B, base_channels*2, H, W]
+        x = self.decoder1(x)  # [B, base_channels, H, W]
 
         # final
-        out = self.final_conv(x)       # [B, out_channels=500, H, W]
+        out = self.final_conv(x)  # [B, out_channels=500, H, W]
         return out
 
 
 class NewModalityEncoder(nn.Module):
-    def __init__(self, species_channels: int = 500, hidden_channels: int = 160, target_spatial: Tuple[int, int] = (152, 320)):
+    def __init__(
+        self,
+        species_channels: int = 500,
+        hidden_channels: int = 160,
+        target_spatial: Tuple[int, int] = (152, 320),
+    ):
         """
         Args:
             species_channels: Number of channels in the new modality (S=500).
@@ -154,7 +166,7 @@ class NewModalityEncoder(nn.Module):
             nn.Conv2d(species_channels, hidden_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(hidden_channels, 4, kernel_size=3, padding=1)
+            nn.Conv2d(hidden_channels, 4, kernel_size=3, padding=1),
         )
         print("Finished Init Encoder")
 
@@ -163,7 +175,7 @@ class NewModalityEncoder(nn.Module):
         Args:
             x: Input tensor with shape [B, T, S, H, W] where
                T=2 timesteps, S=500 species, H=152, W=320.
-               
+
         Returns:
             A Batch object with:
               - surf_vars: keys "2t", "10u", "10v", "msl" each of shape [B, T, H_target, W_target]
@@ -173,22 +185,25 @@ class NewModalityEncoder(nn.Module):
         """
         # Expect the new modality variable to be stored under "species_distribution" in surf_vars.
         if "species_distribution" not in batch.surf_vars:
-            raise ValueError("Input Batch must contain 'species_distribution' in surf_vars.")
-        
+            raise ValueError(
+                "Input Batch must contain 'species_distribution' in surf_vars."
+            )
+
         x = batch.surf_vars["species_distribution"]  # Expected shape: [B, T, 500, H, W]
         B, T, C, H, W = x.shape  # Here, C should equal species_channels (500).
-        
 
         # B, T, C, H, W = x.shape  # C=500 #num_species
         # Merge batch and time dims for per-frame processing.
         x_reshaped = x.view(B * T, C, H, W)  # [B*T, 500, 152, 320]
-        
+
         # Apply the adapter network.
         adapted = self.adapter(x_reshaped)  # [B*T, 4, 152, 320]
-        
+
         # OPTIONAL Downsample to the target spatial resolution if necessary.
         if (H, W) != self.target_spatial:
-            adapted = F.interpolate(adapted, size=self.target_spatial, mode='bilinear', align_corners=False)
+            adapted = F.interpolate(
+                adapted, size=self.target_spatial, mode="bilinear", align_corners=False
+            )
         H_target, W_target = self.target_spatial
 
         # Reshape back to [B, T, 4, H_target, W_target]
@@ -203,7 +218,7 @@ class NewModalityEncoder(nn.Module):
         static_vars = {
             "lsm": torch.zeros(H_target, W_target, device=x.device),
             "z": torch.zeros(H_target, W_target, device=x.device),
-            "slt": torch.zeros(H_target, W_target, device=x.device)
+            "slt": torch.zeros(H_target, W_target, device=x.device),
         }
         # For atmos_vars, use zeros of shape [B, T, 4, H_target, W_target]
         atmos_vars = {}
@@ -215,16 +230,19 @@ class NewModalityEncoder(nn.Module):
         metadata = Metadata(
             lat=lat,
             lon=lon,
-            time=(datetime(2020, 6, 1, 12, 0),),  # This can be updated with actual timestamps.
-            atmos_levels=(100, 250, 500, 850)
+            time=(
+                datetime(2020, 6, 1, 12, 0),
+            ),  # This can be updated with actual timestamps.
+            atmos_levels=(100, 250, 500, 850),
         )
 
         return Batch(
             surf_vars=surf_vars,
             static_vars=static_vars,
             atmos_vars=atmos_vars,
-            metadata=metadata
+            metadata=metadata,
         )
+
 
 class VectorDecoder(nn.Module):
     def __init__(
@@ -232,16 +250,16 @@ class VectorDecoder(nn.Module):
         latent_dim: int = 128,
         out_channels: int = 500,
         hidden_dim: int = 256,
-        final_resolution: Tuple[int, int] = (152, 320)
+        final_resolution: Tuple[int, int] = (152, 320),
     ):
         """
         Decodes a Batch structure (with surf_vars and atmos_vars at a low resolution)
         into a compact latent representation and then upsamples it to produce an output tensor of shape [B, out_channels, 152, 320].
-        
+
         The input Batch is expected to have:
           - surf_vars: keys "2t", "10u", "10v", "msl" with shape [B, 4, 17, 32]
           - atmos_vars: keys "z", "u", "v", "t", "q" with shape [B, 5, 4, 17, 32]
-        
+
         This decoder performs the following steps:
           1. Extracts and flattens the surf_vars into a vector of size 4*17*32 = 2176.
           2. Extracts and flattens the atmos_vars into a vector of size 5*4*17*32 = 10880.
@@ -257,9 +275,9 @@ class VectorDecoder(nn.Module):
         low_res = (17, 32)
         # low_res = (152, 320)
         # Compute the number of input features for surface and atmospheric variables.
-        self.surf_in_dim = 4 * low_res[0] * low_res[1]         # 4*17*32 = 2176
-        self.atmos_in_dim = 5 * 4 * low_res[0] * low_res[1]      # 5*4*17*32 = 10880
-        
+        self.surf_in_dim = 4 * low_res[0] * low_res[1]  # 4*17*32 = 2176
+        self.atmos_in_dim = 5 * 4 * low_res[0] * low_res[1]  # 5*4*17*32 = 10880
+
         ### V2
         # Use the full resolution available.
         # H, W = final_resolution  # (152, 320)
@@ -271,20 +289,28 @@ class VectorDecoder(nn.Module):
         self.atmos_linear = nn.Linear(self.atmos_in_dim, latent_dim)
         # Fuse the two latent representations (concatenation -> 2*latent_dim) and map to latent_dim.
         self.fusion = nn.Linear(2 * latent_dim, latent_dim)
-        
+
         # Define an intermediate spatial resolution for upsampling.
         # We choose (19, 40) so that after three upsampling steps we reach (152, 320) since 19*8=152 and 40*8=320.
         self.inter_res = (19, 40)
         # Map fused latent to a hidden feature map.
-        self.fc = nn.Linear(latent_dim, hidden_dim * self.inter_res[0] * self.inter_res[1])
+        self.fc = nn.Linear(
+            latent_dim, hidden_dim * self.inter_res[0] * self.inter_res[1]
+        )
         self.conv = nn.Sequential(
-            nn.ConvTranspose2d(hidden_dim, hidden_dim // 2, kernel_size=4, stride=2, padding=1),  # (19,40) -> (38,80)
+            nn.ConvTranspose2d(
+                hidden_dim, hidden_dim // 2, kernel_size=4, stride=2, padding=1
+            ),  # (19,40) -> (38,80)
             nn.BatchNorm2d(hidden_dim // 2),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(hidden_dim // 2, hidden_dim // 4, kernel_size=4, stride=2, padding=1),  # (38,80) -> (76,160)
+            nn.ConvTranspose2d(
+                hidden_dim // 2, hidden_dim // 4, kernel_size=4, stride=2, padding=1
+            ),  # (38,80) -> (76,160)
             nn.BatchNorm2d(hidden_dim // 4),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(hidden_dim // 4, out_channels, kernel_size=4, stride=2, padding=1)  # (76,160) -> (152,320)
+            nn.ConvTranspose2d(
+                hidden_dim // 4, out_channels, kernel_size=4, stride=2, padding=1
+            ),  # (76,160) -> (152,320)
         )
         self.final_resolution = final_resolution
         self.out_channels = out_channels
@@ -322,7 +348,7 @@ class VectorDecoder(nn.Module):
         # Project to latent.
         # print("Surf_flat dim", surf_flat.shape)
         latent_surf = self.surf_linear(surf_flat)  # [B, latent_dim]
-        
+
         # Process atmospheric variables.
         atmos_features = []
         atmos_keys = ("z", "u", "v", "t", "q")
@@ -337,16 +363,19 @@ class VectorDecoder(nn.Module):
         # Flatten: [B, 20*17*32] = [B, 10880].
         atmos_flat = atmos_concat.view(B, -1)
         latent_atmos = self.atmos_linear(atmos_flat)  # [B, latent_dim]
-        fused_latent = self.fusion(torch.cat([latent_surf, latent_atmos], dim=1))  # [B, latent_dim]
-        
+        fused_latent = self.fusion(
+            torch.cat([latent_surf, latent_atmos], dim=1)
+        )  # [B, latent_dim]
+
         # Map fused latent to intermediate feature map.
         x_fc = self.fc(fused_latent)  # [B, hidden_dim * 19 * 40]
-        x_fc = x_fc.view(B, -1, self.inter_res[0], self.inter_res[1])  # [B, hidden_dim, 19, 40]
-        
+        x_fc = x_fc.view(
+            B, -1, self.inter_res[0], self.inter_res[1]
+        )  # [B, hidden_dim, 19, 40]
+
         # Upsample to final resolution.
         x_out = self.conv(x_fc)  # [B, out_channels, 152, 320]
         return x_out
-    
 
 
 class VectorDecoderSimple(nn.Module):
@@ -355,12 +384,12 @@ class VectorDecoderSimple(nn.Module):
         latent_dim: int = 128,
         out_channels: int = 1000,
         hidden_dim: int = 256,  # not used in this simplified version
-        final_resolution: Tuple[int, int] = (152, 320)
+        final_resolution: Tuple[int, int] = (152, 320),
     ):
         """
         Simplified decoder that takes a Batch (with surf_vars and atmos_vars at full resolution)
         and produces an output tensor of shape [B, out_channels, 152, 320].
-        
+
         Steps:
           1. Flatten the surface variables (4 keys) into a vector of size 4*152*320.
           2. Flatten the atmospheric variables (5 keys, each with 4 channels) into a vector of size 5*4*152*320.
@@ -370,15 +399,15 @@ class VectorDecoderSimple(nn.Module):
         """
         super().__init__()
         H, W = final_resolution  # (152, 320)
-        self.surf_in_dim = 4 * H * W         # 4 * 152 * 320 = 194560
+        self.surf_in_dim = 4 * H * W  # 4 * 152 * 320 = 194560
         # For atmospheric variables (5 keys, each with 4 channels):
-        self.atmos_in_dim = 5 * 4 * H * W      # 5 * 4 * 152 * 320 = 972800
+        self.atmos_in_dim = 5 * 4 * H * W  # 5 * 4 * 152 * 320 = 972800
 
         self.surf_linear = nn.Linear(self.surf_in_dim, latent_dim)
         self.atmos_linear = nn.Linear(self.atmos_in_dim, latent_dim)
         # Fusion of the two latent vectors:
         self.fusion = nn.Linear(2 * latent_dim, latent_dim)
-        
+
         # Decoder: project fused latent vector to final output.
         # We simply use a linear layer and then reshape.
         self.fc_out = nn.Linear(latent_dim, out_channels * H * W)
@@ -396,7 +425,7 @@ class VectorDecoderSimple(nn.Module):
         """
         B = next(iter(batch.surf_vars.values())).size(0)
         H, W = self.final_resolution
-        
+
         surf_keys = ("2t", "10u", "10v", "msl")
         surf_feats = []
         for key in surf_keys:
@@ -411,7 +440,7 @@ class VectorDecoderSimple(nn.Module):
         # Flatten: [B, 4*152*320] = [B, 194560]
         surf_flat = surf_concat.view(B, -1)
         latent_surf = self.surf_linear(surf_flat)  # [B, latent_dim]
-        
+
         atmos_keys = ("z", "u", "v", "t", "q")
         atmos_feats = []
         for key in atmos_keys:
@@ -423,20 +452,23 @@ class VectorDecoderSimple(nn.Module):
         # Flatten: [B, 20*152*320] = [B, 972800]
         atmos_flat = atmos_concat.view(B, -1)
         latent_atmos = self.atmos_linear(atmos_flat)  # [B, latent_dim]
-        
+
         # Fuse the two latent representations.
-        fused_latent = self.fusion(torch.cat([latent_surf, latent_atmos], dim=1))  # [B, latent_dim]
-        
+        fused_latent = self.fusion(
+            torch.cat([latent_surf, latent_atmos], dim=1)
+        )  # [B, latent_dim]
+
         fc_out = self.fc_out(fused_latent)  # [B, out_channels * 152 * 320]
         x_out = fc_out.view(B, self.out_channels, H, W)
         return x_out
-    
+
+
 class Conv3dBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1):
         super().__init__()
         self.conv = nn.Conv3d(in_channels, out_channels, kernel_size, padding=padding)
         self.bn = nn.BatchNorm3d(out_channels)
-    
+
     def forward(self, x):
         return F.relu(self.bn(self.conv(x)))
 
@@ -447,27 +479,36 @@ class Upsampler(nn.Module):
     using only learned transposed convolution layers with output_size control.
     Input is expected with shape [B, C, T, 152,320].
     """
+
     def __init__(self, in_channels, out_H: int, out_W: int):
         super(Upsampler, self).__init__()
         ## V1
-        self.up1 = nn.ConvTranspose3d(in_channels, in_channels, kernel_size=(1,2,2), 
-                                      stride=(1,2,2))
-        self.up2 = nn.ConvTranspose3d(in_channels, in_channels, kernel_size=(1,2,2), 
-                                      stride=(1,2,2))
-        self.conv_adjust = nn.Conv3d(in_channels, in_channels, kernel_size=(1,3,3), padding=(0,1,1))
+        self.up1 = nn.ConvTranspose3d(
+            in_channels, in_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2)
+        )
+        self.up2 = nn.ConvTranspose3d(
+            in_channels, in_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2)
+        )
+        self.conv_adjust = nn.Conv3d(
+            in_channels, in_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1)
+        )
         ## V2
         # self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
         self.out_H = out_H
         self.out_W = out_W
 
-    
     def forward(self, x):
         ## V1
         # x: [B, C, T, H, W] with H,W ~ (152,320)
         x = self.up1(x)  # now approx (152*2, 320*2) = (304,640)
         x = self.up2(x)  # now approx (304*2,640*2) = (608,1280)
         x = self.conv_adjust(x)  # features refined at (608,1280)
-        x = F.interpolate(x, size=(x.shape[2], self.out_H, self.out_W), mode='trilinear', align_corners=False)
+        x = F.interpolate(
+            x,
+            size=(x.shape[2], self.out_H, self.out_W),
+            mode="trilinear",
+            align_corners=False,
+        )
 
         ## V2
         # x = F.interpolate(x, size=(x.shape[2], 721, 1440), mode='trilinear', align_corners=False)
@@ -482,18 +523,24 @@ class Downsampler(nn.Module):
     using only learned convolution layers with output_size control.
     Input is expected with shape [B, C, T, 721,1440].
     """
+
     def __init__(self, in_channels, out_H: int, out_W: int):
         super(Downsampler, self).__init__()
         ## V1
-        self.conv1 = nn.Conv3d(in_channels, in_channels, kernel_size=(1,2,2), stride=(1,2,2))
-        self.conv2 = nn.Conv3d(in_channels, in_channels, kernel_size=(1,2,2), stride=(1,2,2))
-        self.conv_adjust = nn.Conv3d(in_channels, in_channels, kernel_size=(1,3,3), padding=(0,1,1))
+        self.conv1 = nn.Conv3d(
+            in_channels, in_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2)
+        )
+        self.conv2 = nn.Conv3d(
+            in_channels, in_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2)
+        )
+        self.conv_adjust = nn.Conv3d(
+            in_channels, in_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1)
+        )
         ## V2
         # self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=(1,5,5), padding=1)
         self.out_H = out_H
         self.out_W = out_W
-    
-    
+
     def forward(self, x):
         ## V1
         # x: [B, in_channels, T, 721,1440]
@@ -501,15 +548,28 @@ class Downsampler(nn.Module):
         x = self.conv2(x)  # approx (360/2,720/2) = (180,360)
         x = self.conv_adjust(x)  # refine features at (180,360)
         # Final adjustment: interpolate to exactly (152,320)
-        x = F.interpolate(x, size=(x.shape[2], self.out_H, self.out_W), mode='trilinear', align_corners=False)
+        x = F.interpolate(
+            x,
+            size=(x.shape[2], self.out_H, self.out_W),
+            mode="trilinear",
+            align_corners=False,
+        )
         ## V2
-        # x = self.conv(x) 
+        # x = self.conv(x)
         # x = F.interpolate(x, size=(x.shape[2], 152, 320), mode='trilinear', align_corners=False)
 
         return x
 
+
 class InputMapper(nn.Module):
-    def __init__(self, in_channels=500, timesteps=2, base_channels=64, atmos_levels=(100, 250, 500, 850), upsampling=None):
+    def __init__(
+        self,
+        in_channels=500,
+        timesteps=2,
+        base_channels=64,
+        atmos_levels=(100, 250, 500, 850),
+        upsampling=None,
+    ):
         """
         Args:
             in_channels (int): Number of input channels.
@@ -522,20 +582,42 @@ class InputMapper(nn.Module):
         self.num_atmos_levels = len(atmos_levels)
         self.atmos_levels = atmos_levels
         self.upsampling = upsampling
-        self.supersampling_target_lat_lon = get_supersampling_target_lat_lon(supersampling_config=self.upsampling)
+        self.supersampling_target_lat_lon = get_supersampling_target_lat_lon(
+            supersampling_config=self.upsampling
+        )
         out_channels = 7 + 5 * self.num_atmos_levels
-        self.init_conv = nn.Conv3d(in_channels, base_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
-        self.encoder_conv = nn.Conv3d(base_channels, base_channels * 2, kernel_size=(1, 3, 3),
-                                      stride=(1, 2, 2), padding=(0, 1, 1), padding_mode='circular')
-        self.decoder_conv = nn.ConvTranspose3d(base_channels * 2, base_channels,
-                                               kernel_size=(1, 2, 2), stride=(1, 2, 2))
-        self.final_conv = nn.Conv3d(base_channels, out_channels,
-                                    kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
+        self.init_conv = nn.Conv3d(
+            in_channels,
+            base_channels,
+            kernel_size=(1, 3, 3),
+            padding=(0, 1, 1),
+            padding_mode="circular",
+        )
+        self.encoder_conv = nn.Conv3d(
+            base_channels,
+            base_channels * 2,
+            kernel_size=(1, 3, 3),
+            stride=(1, 2, 2),
+            padding=(0, 1, 1),
+            padding_mode="circular",
+        )
+        self.decoder_conv = nn.ConvTranspose3d(
+            base_channels * 2, base_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2)
+        )
+        self.final_conv = nn.Conv3d(
+            base_channels,
+            out_channels,
+            kernel_size=(1, 3, 3),
+            padding=(0, 1, 1),
+            padding_mode="circular",
+        )
         self.relu = nn.ReLU(inplace=True)
         if self.supersampling_target_lat_lon:
             self.out_H = self.supersampling_target_lat_lon[0].shape[0]
             self.out_W = self.supersampling_target_lat_lon[1].shape[0]
-            self.upsample_net = Upsampler(out_channels, out_H=self.out_H, out_W=self.out_W)
+            self.upsample_net = Upsampler(
+                out_channels, out_H=self.out_H, out_W=self.out_W
+            )
 
     def forward(self, batch):
         """
@@ -551,18 +633,18 @@ class InputMapper(nn.Module):
         else:
             # otherwise take the original
             # aurora_lat = batch.metadata.lat
-            # aurora_lon = batch.metadata.lon  
+            # aurora_lon = batch.metadata.lon
             aurora_lat = batch["metadata"]["lat"]
             aurora_lon = batch["metadata"]["lon"]
-        x = batch["species_distribution"]#.to("cuda:2")
+        x = batch["species_distribution"]  # .to("cuda:2")
         B, T, C_in, H, W = x.shape
         x = x.permute(0, 2, 1, 3, 4)
-        x = self.relu(self.init_conv(x))          # [B, base_channels, T, H, W]
-        x_enc = self.relu(self.encoder_conv(x))     # [B, base_channels*2, T, H/2, W/2]
-        x_dec = self.relu(self.decoder_conv(x_enc)) # [B, base_channels, T, H, W]
+        x = self.relu(self.init_conv(x))  # [B, base_channels, T, H, W]
+        x_enc = self.relu(self.encoder_conv(x))  # [B, base_channels*2, T, H/2, W/2]
+        x_dec = self.relu(self.decoder_conv(x_enc))  # [B, base_channels, T, H, W]
         # Optional skip connection.
         x_dec = x_dec + x
-        x_out = self.final_conv(x_dec)              # [B, 7+5*num_atmos_levels, T, H, W]
+        x_out = self.final_conv(x_dec)  # [B, 7+5*num_atmos_levels, T, H, W]
         if self.supersampling_target_lat_lon:
             x_out = self.upsample_net(x_out)
         # Surf_vars: first 4 channels → [B, 4, T, H, W] then permute to [B, T, 4, H, W]
@@ -580,7 +662,9 @@ class InputMapper(nn.Module):
         # Atmos_vars: remaining channels → [B, 5*num_atmos_levels, T, H, W]
         atmos = x_out[:, 7:, :, :, :]
         # Reshape to [B, 5, num_atmos_levels, T, H, W] then permute to [B, T, 5, num_atmos_levels, H, W]
-        atmos = atmos.view(B, 5, self.num_atmos_levels, T, aurora_lat.shape[0], aurora_lon.shape[0]).permute(0, 3, 1, 2, 4, 5)
+        atmos = atmos.view(
+            B, 5, self.num_atmos_levels, T, aurora_lat.shape[0], aurora_lon.shape[0]
+        ).permute(0, 3, 1, 2, 4, 5)
         keys_atmos = ("t", "u", "v", "q", "z")
         atmos_vars = {k: atmos[:, :, i, :, :, :] for i, k in enumerate(keys_atmos)}
 
@@ -589,14 +673,25 @@ class InputMapper(nn.Module):
         metadata = Metadata(
             lat=aurora_lat,
             lon=aurora_lon,
-            time=(datetime(2020, 6, 1, 12, 0),), # batch.metadata.time, # TODO
-            atmos_levels=self.atmos_levels
+            time=(datetime(2020, 6, 1, 12, 0),),  # batch.metadata.time, # TODO
+            atmos_levels=self.atmos_levels,
         )
-        return Batch(surf_vars=surf_vars, static_vars=static_vars, atmos_vars=atmos_vars, metadata=metadata)
+        return Batch(
+            surf_vars=surf_vars,
+            static_vars=static_vars,
+            atmos_vars=atmos_vars,
+            metadata=metadata,
+        )
 
 
 class OutputMapper(nn.Module):
-    def __init__(self, lat_lon: Tuple[np.ndarray, np.ndarray], out_channels=1000, atmos_levels=(100, 250, 500, 850), downsampling = None):
+    def __init__(
+        self,
+        lat_lon: Tuple[np.ndarray, np.ndarray],
+        out_channels=1000,
+        atmos_levels=(100, 250, 500, 850),
+        downsampling=None,
+    ):
         """
         Args:
             num_atmos_levels (Tuple): The levels for each atmospheric variable.
@@ -605,27 +700,46 @@ class OutputMapper(nn.Module):
         super(OutputMapper, self).__init__()
         in_channels = 7 + 5 * len(atmos_levels)
         self.downsampling = downsampling
-        self.conv1 = nn.Conv3d(in_channels, 64, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
-        self.conv2 = nn.Conv3d(64, 128, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
-        self.conv3 = nn.Conv3d(128, out_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode='circular')
+        self.conv1 = nn.Conv3d(
+            in_channels,
+            64,
+            kernel_size=(1, 3, 3),
+            padding=(0, 1, 1),
+            padding_mode="circular",
+        )
+        self.conv2 = nn.Conv3d(
+            64, 128, kernel_size=(1, 3, 3), padding=(0, 1, 1), padding_mode="circular"
+        )
+        self.conv3 = nn.Conv3d(
+            128,
+            out_channels,
+            kernel_size=(1, 3, 3),
+            padding=(0, 1, 1),
+            padding_mode="circular",
+        )
         self.relu = nn.ReLU(inplace=True)
-        self.downsample_net = Downsampler(out_channels, out_H=lat_lon[0].shape[0], out_W=lat_lon[1].shape[0])
-    
+        self.downsample_net = Downsampler(
+            out_channels, out_H=lat_lon[0].shape[0], out_W=lat_lon[1].shape[0]
+        )
+
     def forward(self, batch: Batch) -> torch.Tensor:
         """
         Reconstructs the prediction back to a tensor of shape [B, T, C_out, H, W] where T=1.
         """
         b, t, H, W = next(iter(batch.surf_vars.values())).shape
-        
+
         surf_list = [v.unsqueeze(2) for v in batch.surf_vars.values()]
         surf = torch.cat(surf_list, dim=2)  # [B, T, 4, H, W]
-        
-        static_list = [v.unsqueeze(0).unsqueeze(0).expand(b, t, 1, H, W) for v in batch.static_vars.values()]
+
+        static_list = [
+            v.unsqueeze(0).unsqueeze(0).expand(b, t, 1, H, W)
+            for v in batch.static_vars.values()
+        ]
         static = torch.cat(static_list, dim=2)  # [B, T, 3, H, W]
-        
+
         atmos_list = [v for v in batch.atmos_vars.values()]
         atmos = torch.cat(atmos_list, dim=2)  # [B, T, 5*num_atmos_levels, H, W]
-        
+
         # Concatenate all along channel dimension: [B, T, 7 + 5*num_atmos_levels, H, W]
         x = torch.cat([surf, static, atmos], dim=2)
         # Rearrange to [B, channels, T, H, W] for convolution.

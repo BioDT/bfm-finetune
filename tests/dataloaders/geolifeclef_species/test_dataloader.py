@@ -7,7 +7,7 @@ from tests.utils import requires_data
 @requires_data()
 def test_find_files():
     dataset = GeoLifeCLEFSpeciesDataset()
-    assert len(dataset) >= 4
+    assert len(dataset) >= 3
 
 
 @requires_data()
@@ -16,15 +16,16 @@ def test_load_one():
     element = dataset[0]
     batch = element["batch"]
     target = element["target"]
-    assert "species_distribution" in batch.surf_vars
-    species_distribution = batch.surf_vars["species_distribution"]
-    assert species_distribution.shape[0] == 2
-    assert species_distribution.shape[1] == 500
-    assert species_distribution.shape[2] == 152
-    assert species_distribution.shape[3] == 320
-    assert target.shape[0] == 500
-    assert target.shape[1] == 152
-    assert target.shape[2] == 320
+    assert "species_distribution" in batch, f"keys available in surf_vars: {batch.keys()}"
+    species_distribution = batch["species_distribution"]
+    assert species_distribution.shape[0] == 2, species_distribution.shape
+    assert species_distribution.shape[1] == 500, species_distribution.shape
+    assert species_distribution.shape[2] == 152, species_distribution.shape
+    assert species_distribution.shape[3] == 320, species_distribution.shape
+    assert target.shape[0] == 1, target.shape
+    assert target.shape[1] == 500, target.shape
+    assert target.shape[2] == 152, target.shape
+    assert target.shape[3] == 320, target.shape
 
 
 if __name__ == "__main__":

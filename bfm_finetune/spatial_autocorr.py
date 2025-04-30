@@ -1,19 +1,20 @@
 import os
 from pathlib import Path
+
+import hydra
 import numpy as np
 import torch
-import hydra
-from omegaconf import DictConfig
 from aurora import AuroraSmall
 from aurora.batch import Batch
+from omegaconf import DictConfig
 from torchvision.transforms import Resize
 
 from bfm_finetune.aurora_feature_extractor import extract_features
+from bfm_finetune.aurora_mod import AuroraFlex, AuroraRaw2
 from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.unet_classification import dict_to_batch, to_device
-from bfm_finetune.aurora_mod import AuroraFlex, AuroraRaw2
 from bfm_finetune.utils import get_supersampling_target_lat_lon
 
 

@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from aurora.batch import Batch
 
+from bfm_finetune.aurora_feature_extractor import extract_features
 from bfm_finetune.lora_adapter import LoRAAdapter
 from bfm_finetune.new_variable_decoder import (
     InputMapper,
@@ -15,7 +16,6 @@ from bfm_finetune.new_variable_decoder import (
     OutputMapper,
     VectorDecoder,
 )
-from bfm_finetune.aurora_feature_extractor import extract_features
 
 
 class ChannelAdapter(nn.Module):

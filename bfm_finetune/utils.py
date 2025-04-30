@@ -1,12 +1,14 @@
 import os
+import random
 from pathlib import Path
 from typing import Tuple
+
 import numpy as np
-import random
 import pandas as pd
 import torch
-from sklearn.metrics import roc_auc_score
 from omegaconf import OmegaConf
+from sklearn.metrics import roc_auc_score
+
 
 def get_lat_lon_ranges(
     min_lon: float = -30.0,
@@ -73,11 +75,19 @@ def aggregate_into_latlon_grid(
         lat = row["lat"]
         lon = row["lon"]
         lat_i = next(
-            (i for i, val in enumerate(lat_range_list) if val < lat + step / 2 and val >= lat - step / 2),
+            (
+                i
+                for i, val in enumerate(lat_range_list)
+                if val < lat + step / 2 and val >= lat - step / 2
+            ),
             None,
         )
         lon_i = next(
-            (i for i, val in enumerate(lon_range_list) if val < lon + step / 2 and val >= lon - step / 2),
+            (
+                i
+                for i, val in enumerate(lon_range_list)
+                if val < lon + step / 2 and val >= lon - step / 2
+            ),
             None,
         )
         if lat_i == None or lon_i == None:
@@ -121,7 +131,10 @@ def save_checkpoint(model, optimizer, epoch, loss, checkpoint_folder):
     torch.save(checkpoint, file_path)
     print(f"Checkpoint saved at epoch {epoch+1} with loss {loss:.4f} to {file_path}")
 
-def get_supersampling_target_lat_lon(supersampling_config) -> Tuple[np.ndarray, np.ndarray] | None:
+
+def get_supersampling_target_lat_lon(
+    supersampling_config,
+) -> Tuple[np.ndarray, np.ndarray] | None:
     if supersampling_config == None:
         return None
     if supersampling_config.enabled:
@@ -134,6 +147,7 @@ def get_supersampling_target_lat_lon(supersampling_config) -> Tuple[np.ndarray, 
     else:
         return None
 
+
 def load_checkpoint(model, optimizer, checkpoint_folder):
     if not checkpoint_folder:
         print("checkpoint_folder not set. Starting from scratch.")
@@ -145,7 +159,9 @@ def load_checkpoint(model, optimizer, checkpoint_folder):
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_epoch = checkpoint["epoch"] + 1
         best_loss = checkpoint["loss"]
-        print(f"Loaded checkpoint from {file_path} (epoch {start_epoch}, loss: {best_loss:.4f})")
+        print(
+            f"Loaded checkpoint from {file_path} (epoch {start_epoch}, loss: {best_loss:.4f})"
+        )
         return start_epoch, best_loss
     else:
         print("No checkpoint found in folder. Starting from scratch.")
@@ -154,12 +170,13 @@ def load_checkpoint(model, optimizer, checkpoint_folder):
 
 def seed_everything(seed: int):
     random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
+
 
 def load_config(output_dir: str | Path, config_file_name: str = "config.yaml"):
     config_path = Path(output_dir) / ".hydra"
@@ -172,14 +189,15 @@ def load_config(output_dir: str | Path, config_file_name: str = "config.yaml"):
 
 ######## FOR CLASSIFICATION - Like MALPOLON DOES https://arxiv.org/pdf/2409.18102
 
+
 def compute_top25_metrics_for_sample(pred, target):
     """
     Computes Top-25 metrics for one sample.
-    
+
     Args:
         pred (np.array): 1D array of predictions.
         target (np.array): 1D array of target values.
-        
+
     Returns:
         dict: Contains precision, recall, f1, auc and the intersection count.
     """
@@ -189,10 +207,14 @@ def compute_top25_metrics_for_sample(pred, target):
     pred_set = set(top25_pred_idx)
     target_set = set(top25_target_idx)
     intersection = len(pred_set.intersection(target_set))
-    
+
     precision = intersection / 25.0
     recall = intersection / 25.0
-    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    f1 = (
+        (2 * precision * recall / (precision + recall))
+        if (precision + recall) > 0
+        else 0.0
+    )
 
     # For AUC: create binary labels (1 for top-25 indices, 0 otherwise).
     binary_labels = np.zeros_like(target, dtype=int)
@@ -202,14 +224,19 @@ def compute_top25_metrics_for_sample(pred, target):
     except ValueError:
         auc = 0.0
 
-    return {"precision": precision, "recall": recall, "f1": f1, "auc": auc, "intersection": intersection}
-
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "auc": auc,
+        "intersection": intersection,
+    }
 
 
 def train_epoch(model, dataloader, optimizer, loss_fn, device):
     """
     Performs one training epoch and computes additional metrics.
-    
+
     Returns:
         avg_loss (float): Average loss for the epoch.
         metrics (dict): Dictionary with sample (macro) and micro averaged metrics.
@@ -218,7 +245,7 @@ def train_epoch(model, dataloader, optimizer, loss_fn, device):
     total_loss = 0.0
     all_metrics = []
     global_true = []
-    global_scores = [] 
+    global_scores = []
 
     for batch in dataloader:
         batch = batch.to(device)  # shape: [B, T, C_in, H, W]
@@ -230,12 +257,14 @@ def train_epoch(model, dataloader, optimizer, loss_fn, device):
         total_loss += loss.item()
 
         output_np = output.detach().cpu().numpy()  # shape: [B, 1, C_out, H, W]
-        target_np = batch.detach().cpu().numpy()     # shape: [B, T, C_in, H, W]
+        target_np = batch.detach().cpu().numpy()  # shape: [B, T, C_in, H, W]
         B = output_np.shape[0]
         for i in range(B):
-            pred_sample = output_np[i, 0].flatten()   # flatten [C_out, H, W]
-            target_sample = target_np[i, 0].flatten()   # flatten [C_in, H, W]
-            sample_metrics = compute_top25_metrics_for_sample(pred_sample, target_sample)
+            pred_sample = output_np[i, 0].flatten()  # flatten [C_out, H, W]
+            target_sample = target_np[i, 0].flatten()  # flatten [C_in, H, W]
+            sample_metrics = compute_top25_metrics_for_sample(
+                pred_sample, target_sample
+            )
             all_metrics.append(sample_metrics)
             # For micro aggregation: build a binary ground truth vector per sample.
             binary_labels = np.zeros_like(target_sample, dtype=int)
@@ -246,10 +275,10 @@ def train_epoch(model, dataloader, optimizer, loss_fn, device):
 
     avg_loss = total_loss / len(dataloader)
     # Sample (macro) averages.
-    sample_precision = np.mean([m['precision'] for m in all_metrics])
-    sample_recall = np.mean([m['recall'] for m in all_metrics])
-    sample_f1 = np.mean([m['f1'] for m in all_metrics])
-    sample_auc = np.mean([m['auc'] for m in all_metrics])
+    sample_precision = np.mean([m["precision"] for m in all_metrics])
+    sample_recall = np.mean([m["recall"] for m in all_metrics])
+    sample_f1 = np.mean([m["f1"] for m in all_metrics])
+    sample_auc = np.mean([m["auc"] for m in all_metrics])
 
     # Micro averages: concatenate all samples.
     global_true_concat = np.concatenate(global_true)
@@ -258,11 +287,14 @@ def train_epoch(model, dataloader, optimizer, loss_fn, device):
         micro_auc = roc_auc_score(global_true_concat, global_scores_concat)
     except ValueError:
         micro_auc = 0.0
-    total_intersection = sum([m['intersection'] for m in all_metrics])
+    total_intersection = sum([m["intersection"] for m in all_metrics])
     micro_precision = total_intersection / (25 * len(all_metrics))
     micro_recall = total_intersection / (25 * len(all_metrics))
-    micro_f1 = (2 * micro_precision * micro_recall / (micro_precision + micro_recall)
-                if (micro_precision + micro_recall) > 0 else 0.0)
+    micro_f1 = (
+        2 * micro_precision * micro_recall / (micro_precision + micro_recall)
+        if (micro_precision + micro_recall) > 0
+        else 0.0
+    )
 
     metrics = {
         "sample_precision": sample_precision,
@@ -272,14 +304,15 @@ def train_epoch(model, dataloader, optimizer, loss_fn, device):
         "micro_precision": micro_precision,
         "micro_recall": micro_recall,
         "micro_f1": micro_f1,
-        "micro_auc": micro_auc
+        "micro_auc": micro_auc,
     }
     return avg_loss, metrics
+
 
 def validate_epoch(model, dataloader, loss_fn, device):
     """
     Performs one validation epoch (without gradient updates) and computes metrics.
-    
+
     Returns:
         avg_loss (float): Average validation loss.
         metrics (dict): Dictionary with sample (macro) and micro averaged metrics.
@@ -297,12 +330,14 @@ def validate_epoch(model, dataloader, loss_fn, device):
             total_loss += loss.item()
 
             output_np = output.detach().cpu().numpy()  # shape: [B, 1, C_out, H, W]
-            target_np = batch.detach().cpu().numpy()     # shape: [B, T, C_in, H, W]
+            target_np = batch.detach().cpu().numpy()  # shape: [B, T, C_in, H, W]
             B = output_np.shape[0]
             for i in range(B):
                 pred_sample = output_np[i, 0].flatten()
                 target_sample = target_np[i, 0].flatten()
-                sample_metrics = compute_top25_metrics_for_sample(pred_sample, target_sample)
+                sample_metrics = compute_top25_metrics_for_sample(
+                    pred_sample, target_sample
+                )
                 all_metrics.append(sample_metrics)
                 binary_labels = np.zeros_like(target_sample, dtype=int)
                 top25_idx = np.argsort(target_sample)[-25:]
@@ -311,22 +346,25 @@ def validate_epoch(model, dataloader, loss_fn, device):
                 global_scores.append(pred_sample)
 
     avg_loss = total_loss / len(dataloader)
-    sample_precision = np.mean([m['precision'] for m in all_metrics])
-    sample_recall = np.mean([m['recall'] for m in all_metrics])
-    sample_f1 = np.mean([m['f1'] for m in all_metrics])
-    sample_auc = np.mean([m['auc'] for m in all_metrics])
-    
+    sample_precision = np.mean([m["precision"] for m in all_metrics])
+    sample_recall = np.mean([m["recall"] for m in all_metrics])
+    sample_f1 = np.mean([m["f1"] for m in all_metrics])
+    sample_auc = np.mean([m["auc"] for m in all_metrics])
+
     global_true_concat = np.concatenate(global_true)
     global_scores_concat = np.concatenate(global_scores)
     try:
         micro_auc = roc_auc_score(global_true_concat, global_scores_concat)
     except ValueError:
         micro_auc = 0.0
-    total_intersection = sum([m['intersection'] for m in all_metrics])
+    total_intersection = sum([m["intersection"] for m in all_metrics])
     micro_precision = total_intersection / (25 * len(all_metrics))
     micro_recall = total_intersection / (25 * len(all_metrics))
-    micro_f1 = (2 * micro_precision * micro_recall / (micro_precision + micro_recall)
-                if (micro_precision + micro_recall) > 0 else 0.0)
+    micro_f1 = (
+        2 * micro_precision * micro_recall / (micro_precision + micro_recall)
+        if (micro_precision + micro_recall) > 0
+        else 0.0
+    )
 
     metrics = {
         "sample_precision": sample_precision,
@@ -336,6 +374,6 @@ def validate_epoch(model, dataloader, loss_fn, device):
         "micro_precision": micro_precision,
         "micro_recall": micro_recall,
         "micro_f1": micro_f1,
-        "micro_auc": micro_auc
+        "micro_auc": micro_auc,
     }
     return avg_loss, metrics

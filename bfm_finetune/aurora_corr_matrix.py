@@ -1,28 +1,34 @@
-import numpy as np
-import torch
+from pathlib import Path
+
 import hydra
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
-from omegaconf import DictConfig
-from pathlib import Path
-from torchvision.transforms import Resize
+import torch
 from aurora import AuroraSmall
-from bfm_finetune.aurora_mod import AuroraFlex, AuroraRaw2, AuroraRaw
+from omegaconf import DictConfig
+from torch import pca_lowrank
+from torchvision.transforms import Resize
+
 from bfm_finetune.aurora_feature_extractor import extract_features
+from bfm_finetune.aurora_mod import AuroraFlex, AuroraRaw, AuroraRaw2
 from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.unet_classification import dict_to_batch, to_device
 from bfm_finetune.utils import get_supersampling_target_lat_lon
-from torch import pca_lowrank
 
 
 @hydra.main(config_path=".", config_name="spatial_autocorr")
 def main(cfg: DictConfig):
     device = torch.device(cfg.run.device if torch.cuda.is_available() else "cpu")
     # load backbone and model
-    backbone = AuroraSmall(use_lora=False, autocast=True) # TODO: set Lora to True, set AuroraBig
-    backbone.load_checkpoint(cfg.aurora.repo, cfg.aurora.checkpoint) # TODO: set strict = False
+    backbone = AuroraSmall(
+        use_lora=False, autocast=True
+    )  # TODO: set Lora to True, set AuroraBig
+    backbone.load_checkpoint(
+        cfg.aurora.repo, cfg.aurora.checkpoint
+    )  # TODO: set strict = False
     backbone.to(device)
     if cfg.model.supersampling:
         lat_lon = get_supersampling_target_lat_lon(True)

@@ -35,7 +35,7 @@ def get_model(small=True):
     else:
         model = Aurora(use_lora=False)
         model.load_checkpoint("microsoft/aurora", "aurora-0.25-pretrained.ckpt")
-    model.to("cuda")
+    model.to("cuda:1")
     return model
 
 

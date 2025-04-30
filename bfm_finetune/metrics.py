@@ -1,16 +1,19 @@
-import torch
-import numpy as np
-from skimage.metrics import structural_similarity as ssim
-import scipy.ndimage
 import math
+
 import matplotlib.pyplot as plt
+import numpy as np
+import scipy.ndimage
+import torch
+from skimage.metrics import structural_similarity as ssim
+
 
 def compute_rmse(pred: torch.Tensor, target: torch.Tensor) -> float:
     """
     Computes RMSE over the entire tensor.
     Both pred and target are expected to have shape [B, 1, C, H, W].
     """
-    return torch.sqrt(torch.mean((pred - target) ** 2)) # .item() if want the value
+    return torch.sqrt(torch.mean((pred - target) ** 2))  # .item() if want the value
+
 
 def compute_mae(pred: torch.Tensor, target: torch.Tensor) -> float:
     """
@@ -18,19 +21,23 @@ def compute_mae(pred: torch.Tensor, target: torch.Tensor) -> float:
     """
     return torch.mean(torch.abs(pred - target))
 
-def compute_mape(pred: torch.Tensor, target: torch.Tensor, epsilon: float = 1e-8) -> float:
+
+def compute_mape(
+    pred: torch.Tensor, target: torch.Tensor, epsilon: float = 1e-8
+) -> float:
     """
     Computes MAPE (in percentage) over the entire tensor.
     """
-    return (torch.mean(torch.abs((pred - target) / (target + epsilon))) * 100)
+    return torch.mean(torch.abs((pred - target) / (target + epsilon))) * 100
+
 
 def compute_acc(pred: torch.Tensor, target: torch.Tensor) -> float:
     """
     Computes the Anomaly Correlation Coefficient (ACC) per sample.
-    For each sample, the anomaly is computed by subtracting the sample mean 
+    For each sample, the anomaly is computed by subtracting the sample mean
     (computed over C, H, W) from both pred and target.
     Returns the average Pearson correlation over the batch.
-    
+
     Both pred and target have shape [B, 1, C, H, W].
     """
     B = pred.shape[0]
@@ -53,12 +60,15 @@ def compute_acc(pred: torch.Tensor, target: torch.Tensor) -> float:
             correlations.append(corr)
     return np.mean(correlations)
 
-def compute_msss(pred: torch.Tensor, target: torch.Tensor, epsilon: float = 1e-8) -> float:
+
+def compute_msss(
+    pred: torch.Tensor, target: torch.Tensor, epsilon: float = 1e-8
+) -> float:
     """
     Computes the Mean Squared Skill Score (MSSS) relative to a baseline.
     For each sample, the baseline is the climatology (i.e. the sample mean over C, H, W).
     MSSS = 1 - (MSE_model / MSE_baseline)
-    
+
     Both pred and target have shape [B, 1, C, H, W].
     Returns the average MSSS over the batch.
     """
@@ -73,12 +83,15 @@ def compute_msss(pred: torch.Tensor, target: torch.Tensor, epsilon: float = 1e-8
         msss_vals.append(1 - (mse_model / (mse_baseline + epsilon)).item())
     return np.mean(msss_vals)
 
-def compute_ssim_metric(pred: torch.Tensor, target: torch.Tensor, data_range: float = None) -> float:
+
+def compute_ssim_metric(
+    pred: torch.Tensor, target: torch.Tensor, data_range: float = None
+) -> float:
     """
     Computes the Structural Similarity Index (SSIM) for spatial fields.
     For each sample and channel, SSIM is computed on the 2D field (H, W).
     Both pred and target have shape [B, 1, C, H, W]. The time dim is squeezed.
-    
+
     Returns the average SSIM over all samples and channels.
     """
     B, _, C, H, W = pred.shape
@@ -88,16 +101,21 @@ def compute_ssim_metric(pred: torch.Tensor, target: torch.Tensor, data_range: fl
     for b in range(B):
         for c in range(C):
             # Determine data_range if not provided
-            dr = data_range if data_range is not None else (pred_np[b, c].max() - pred_np[b, c].min())
+            dr = (
+                data_range
+                if data_range is not None
+                else (pred_np[b, c].max() - pred_np[b, c].min())
+            )
             ssim_val = ssim(pred_np[b, c], target_np[b, c], data_range=dr)
             ssim_vals.append(ssim_val)
     return np.mean(ssim_vals)
+
 
 def compute_spc(pred: torch.Tensor, target: torch.Tensor) -> float:
     """
     Computes the Spatial Pattern Correlation (SPC).
     For each sample and channel, flatten the 2D spatial field and compute Pearson correlation.
-    
+
     Both pred and target have shape [B, 1, C, H, W].
     Returns the average SPC over all samples and channels.
     """
@@ -116,11 +134,14 @@ def compute_spc(pred: torch.Tensor, target: torch.Tensor) -> float:
                 correlations.append(corr)
     return np.mean(correlations)
 
-def compute_psnr(pred: torch.Tensor, target: torch.Tensor, max_val: float = 1.0) -> float:
+
+def compute_psnr(
+    pred: torch.Tensor, target: torch.Tensor, max_val: float = 1.0
+) -> float:
     """
     Computes the Peak Signal-to-Noise Ratio (PSNR) in dB.
     For each sample and channel, PSNR is computed and then averaged.
-    
+
     Both pred and target have shape [B, 1, C, H, W].
     """
     B, _, C, H, W = pred.shape
@@ -131,16 +152,19 @@ def compute_psnr(pred: torch.Tensor, target: torch.Tensor, max_val: float = 1.0)
         for c in range(C):
             mse = np.mean((pred_np[b, c] - target_np[b, c]) ** 2)
             if mse == 0:
-                psnr_vals.append(float('inf'))
+                psnr_vals.append(float("inf"))
             else:
                 psnr_vals.append(20 * np.log10(max_val) - 10 * np.log10(mse))
     return np.mean(psnr_vals)
 
-def compute_fss(pred: torch.Tensor, target: torch.Tensor, window_size: int = 3) -> float:
+
+def compute_fss(
+    pred: torch.Tensor, target: torch.Tensor, window_size: int = 3
+) -> float:
     """
     Computes the Fractions Skill Score (FSS) for spatial fields.
     For each sample and channel, a uniform filter is applied to compute the fractional coverage.
-    
+
     Both pred and target have shape [B, 1, C, H, W].
     Returns the average FSS over all samples and channels.
     """
@@ -152,17 +176,22 @@ def compute_fss(pred: torch.Tensor, target: torch.Tensor, window_size: int = 3) 
         for c in range(C):
             pred_field = pred_np[b, c]
             target_field = target_np[b, c]
-            pred_fraction = scipy.ndimage.uniform_filter(pred_field.astype(np.float32), size=window_size)
-            target_fraction = scipy.ndimage.uniform_filter(target_field.astype(np.float32), size=window_size)
+            pred_fraction = scipy.ndimage.uniform_filter(
+                pred_field.astype(np.float32), size=window_size
+            )
+            target_fraction = scipy.ndimage.uniform_filter(
+                target_field.astype(np.float32), size=window_size
+            )
             mse = np.mean((pred_fraction - target_fraction) ** 2)
             denom = np.mean((np.abs(pred_fraction) + np.abs(target_fraction)) ** 2)
             fss_vals.append(1 - mse / (denom + 1e-8))
     return np.mean(fss_vals)
 
+
 def plot_metrics(metrics_dict: dict):
     """
     Plots a dictionary of metric values over epochs.
-    
+
     Args:
         metrics_dict (dict): Keys are metric names; values are lists of metric values.
     """
@@ -177,12 +206,13 @@ def plot_metrics(metrics_dict: dict):
     plt.show()
 
 
-
 ## TESTING SOME FUNCTIONS
+
 
 def create_constant_tensor(value, shape=(2, 1, 3, 32, 32)):
     """Creates a tensor filled with 'value' of shape [B, T=1, C, H, W]."""
     return torch.full(shape, value, dtype=torch.float32)
+
 
 def generate_synthetic_data(B=3, T=1, C=1, H=64, W=64, noise_std=0.1, shift=2):
     """
@@ -190,7 +220,7 @@ def generate_synthetic_data(B=3, T=1, C=1, H=64, W=64, noise_std=0.1, shift=2):
     The target is defined as a sinusoidal pattern over a spatial grid.
     The prediction is defined as the target shifted to the right by 'shift' pixels
     plus some additive Gaussian noise.
-    
+
     Returns:
         target, pred: torch.Tensor of shape [B, T, C, H, W]
     """
@@ -198,10 +228,10 @@ def generate_synthetic_data(B=3, T=1, C=1, H=64, W=64, noise_std=0.1, shift=2):
     y = np.linspace(0, 2 * np.pi, H)
     X, Y = np.meshgrid(x, y)
     base_pattern = np.sin(X) * np.cos(Y)  # shape: [H, W]
-    
+
     # Create target tensor: same pattern repeated for each sample.
     target = np.tile(base_pattern, (B, T, C, 1, 1)).astype(np.float32)
-    
+
     # Create prediction: shift the pattern to the right and add noise.
     pred = np.empty_like(target)
     for b in range(B):
@@ -210,8 +240,9 @@ def generate_synthetic_data(B=3, T=1, C=1, H=64, W=64, noise_std=0.1, shift=2):
                 shifted = np.roll(base_pattern, shift, axis=1)  # shift horizontally
                 noisy = shifted + np.random.normal(0, noise_std, size=shifted.shape)
                 pred[b, t, c] = noisy
-                
+
     return torch.tensor(target), torch.tensor(pred)
+
 
 def make_test():
     # Test data: Two samples, 1 timestep, 3 channels, 32x32 spatial dimensions.
@@ -261,7 +292,6 @@ def make_test():
     fss_val = compute_fss(target_ones, target_ones)
     print("Test FSS (expected 1):", fss_val)
 
-
     target_tensor, pred_tensor = generate_synthetic_data()
 
     # Compute Metrics on Synthetic Data
@@ -280,7 +310,7 @@ def make_test():
     dummy_metrics = {
         "RMSE": [rmse_val, rmse_val * 0.9, rmse_val * 1.1, rmse_val * 0.95],
         "MAE": [mae_val, mae_val * 0.95, mae_val * 1.05, mae_val],
-        "SSIM": [ssim_val, ssim_val * 0.98, ssim_val, ssim_val * 1.0]
+        "SSIM": [ssim_val, ssim_val * 0.98, ssim_val, ssim_val * 1.0],
     }
 
     print("Plotting metrics...")

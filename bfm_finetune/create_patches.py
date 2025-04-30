@@ -1,17 +1,19 @@
 #!/usr/bin/env python
+import argparse
 import os
 from pathlib import Path
-import torch
+
 import numpy as np
-import argparse
+import torch
+
 
 def create_four_anchor_patches(
     species_distribution: torch.Tensor,
     patch_lat_size: int = 64,
     patch_lon_size: int = 128,
-    vertical_anchor: str = "center",     # Options: "top", "center", "bottom"
-    horizontal_anchor: str = "center",     # Options: "left", "center", "right"
-    lat_ascending: bool = True             # True if lat increases (e.g. from 34 to 72)
+    vertical_anchor: str = "center",  # Options: "top", "center", "bottom"
+    horizontal_anchor: str = "center",  # Options: "left", "center", "right"
+    lat_ascending: bool = True,  # True if lat increases (e.g. from 34 to 72)
 ) -> tuple:
     """
     Extract a contiguous region of size (2*patch_lat_size, 2*patch_lon_size)
@@ -19,10 +21,10 @@ def create_four_anchor_patches(
         - [S, 152, 320]  (no time dimension)
         - [T, S, 152, 320] (with T timesteps, here T=2)
     The cropping is applied to the last two dimensions.
-    
+
     Returns:
       (patches, row_start, col_start)
-      
+
       - patches is a list of 4 tensors. If the input is 4D, then each patch will have shape
         [T, S, patch_lat_size, patch_lon_size]. If the input is 3D, then each patch will have shape
         [S, patch_lat_size, patch_lon_size].
@@ -37,12 +39,14 @@ def create_four_anchor_patches(
         T = None
     else:
         raise ValueError("Input tensor must be either 3D or 4D.")
-    
-    assert full_lat == 152 and full_lon == 320, f"Expected grid shape (H,W) = (152,320), got ({full_lat},{full_lon})"
-    
+
+    assert (
+        full_lat == 152 and full_lon == 320
+    ), f"Expected grid shape (H,W) = (152,320), got ({full_lat},{full_lon})"
+
     # Overall crop dimensions to be split into 4 patches.
     crop_height = 2 * patch_lat_size  # e.g., 128 if patch_lat_size=64
-    crop_width  = 2 * patch_lon_size   # e.g., 256 if patch_lon_size=128
+    crop_width = 2 * patch_lon_size  # e.g., 256 if patch_lon_size=128
 
     if vertical_anchor == "center":
         row_start = (full_lat - crop_height) // 2
@@ -52,7 +56,7 @@ def create_four_anchor_patches(
         row_start = full_lat - crop_height if lat_ascending else 0
     else:
         raise ValueError("vertical_anchor must be 'top', 'center', or 'bottom'.")
-    
+
     if horizontal_anchor == "center":
         col_start = (full_lon - crop_width) // 2
     elif horizontal_anchor == "left":
@@ -69,18 +73,46 @@ def create_four_anchor_patches(
         else:
             return x[:, r0:r1, c0:c1]
 
-    patch_top_left = slice_tensor(species_distribution, row_start, row_start + patch_lat_size, col_start, col_start + patch_lon_size)
-    patch_top_right = slice_tensor(species_distribution, row_start, row_start + patch_lat_size, col_start + patch_lon_size, col_start + 2*patch_lon_size)
-    patch_bottom_left = slice_tensor(species_distribution, row_start + patch_lat_size, row_start + 2*patch_lat_size, col_start, col_start + patch_lon_size)
-    patch_bottom_right = slice_tensor(species_distribution, row_start + patch_lat_size, row_start + 2*patch_lat_size, col_start + patch_lon_size, col_start + 2*patch_lon_size)
+    patch_top_left = slice_tensor(
+        species_distribution,
+        row_start,
+        row_start + patch_lat_size,
+        col_start,
+        col_start + patch_lon_size,
+    )
+    patch_top_right = slice_tensor(
+        species_distribution,
+        row_start,
+        row_start + patch_lat_size,
+        col_start + patch_lon_size,
+        col_start + 2 * patch_lon_size,
+    )
+    patch_bottom_left = slice_tensor(
+        species_distribution,
+        row_start + patch_lat_size,
+        row_start + 2 * patch_lat_size,
+        col_start,
+        col_start + patch_lon_size,
+    )
+    patch_bottom_right = slice_tensor(
+        species_distribution,
+        row_start + patch_lat_size,
+        row_start + 2 * patch_lat_size,
+        col_start + patch_lon_size,
+        col_start + 2 * patch_lon_size,
+    )
 
     patches = [patch_top_left, patch_top_right, patch_bottom_left, patch_bottom_right]
     return patches, row_start, col_start
 
 
-def process_pt_file(file_path: Path, output_subfolder: Path, 
-                    vertical_anchor: str = "center", horizontal_anchor: str = "center",
-                    lat_ascending: bool = True) -> list:
+def process_pt_file(
+    file_path: Path,
+    output_subfolder: Path,
+    vertical_anchor: str = "center",
+    horizontal_anchor: str = "center",
+    lat_ascending: bool = True,
+) -> list:
     """
     Processes a single .pt file by:
       - Loading the file.
@@ -88,7 +120,7 @@ def process_pt_file(file_path: Path, output_subfolder: Path,
       - Creating 4 patches from the entire tensor (so patches will have shape [T, S, 64, 128]).
       - Embedding the spatial metadata (including coordinate subsets) and the timestamps.
       - Saving each patch as a .pt file in the output_subfolder.
-    
+
     Returns a list of saved file paths.
     """
     data = torch.load(file_path, map_location="cpu")
@@ -99,12 +131,12 @@ def process_pt_file(file_path: Path, output_subfolder: Path,
     # Now pass the entire distribution; patchification will be applied along last two dims.
     # So the resulting patches will have shape [T, S, 64, 128].
     patches, row_start, col_start = create_four_anchor_patches(
-         distribution,
-         patch_lat_size=64,
-         patch_lon_size=128,
-         vertical_anchor=vertical_anchor,
-         horizontal_anchor=horizontal_anchor,
-         lat_ascending=lat_ascending
+        distribution,
+        patch_lat_size=64,
+        patch_lon_size=128,
+        vertical_anchor=vertical_anchor,
+        horizontal_anchor=horizontal_anchor,
+        lat_ascending=lat_ascending,
     )
     # Load full coordinate arrays from metadata.
     lat_array = np.asarray(data["metadata"]["lat"])  # shape (152,)
@@ -133,8 +165,8 @@ def process_pt_file(file_path: Path, output_subfolder: Path,
             cs = col_start + 128
 
         # Extract the coordinate subsets for this patch.
-        lat_patch = lat_array[rs: rs + 64]
-        lon_patch = lon_array[cs: cs + 128]
+        lat_patch = lat_array[rs : rs + 64]
+        lon_patch = lon_array[cs : cs + 128]
 
         patch_metadata = {
             "row_start": rs,
@@ -151,18 +183,25 @@ def process_pt_file(file_path: Path, output_subfolder: Path,
         }
         out_dict = {
             "patch": patch,  # Note: patch shape is [T, S, 64, 128]
-            "metadata": patch_metadata
+            "metadata": patch_metadata,
         }
-        out_file = output_subfolder / f"{base_name}_patch_{i}_rs{rs}_cs{cs}_lat{lat_array[rs]:.2f}_lon{lon_array[cs]:.2f}.pt"
+        out_file = (
+            output_subfolder
+            / f"{base_name}_patch_{i}_rs{rs}_cs{cs}_lat{lat_array[rs]:.2f}_lon{lon_array[cs]:.2f}.pt"
+        )
         torch.save(out_dict, out_file)
         print(f"Saved patch {i} from {file_path.name} to {out_file}")
         saved_files.append(out_file)
     return saved_files
 
 
-def process_dataset_folder(input_folder: Path, output_folder: Path, 
-                           vertical_anchor: str = "center", horizontal_anchor: str = "center",
-                           lat_ascending: bool = True):
+def process_dataset_folder(
+    input_folder: Path,
+    output_folder: Path,
+    vertical_anchor: str = "center",
+    horizontal_anchor: str = "center",
+    lat_ascending: bool = True,
+):
     """
     Processes an input folder with subfolders "train" and "val". For each .pt file,
     applies patchification (creating 4 patches per file with the full 2 timesteps),
@@ -176,30 +215,66 @@ def process_dataset_folder(input_folder: Path, output_folder: Path,
         pt_files = sorted(input_subfolder.glob("*.pt"))
         print(f"Processing {len(pt_files)} files in {input_subfolder}")
         for pt_file in pt_files:
-            process_pt_file(pt_file, output_subfolder, vertical_anchor, horizontal_anchor, lat_ascending)
+            process_pt_file(
+                pt_file,
+                output_subfolder,
+                vertical_anchor,
+                horizontal_anchor,
+                lat_ascending,
+            )
 
-    
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Patchify GeoLifeCLEF .pt files (with 'train' and 'val' subfolders) that contain 2 timesteps "
-                    "into 4 patches per file (handling the entire 2-timestep tensor) while embedding coordinate and timestamp metadata."
+        "into 4 patches per file (handling the entire 2-timestep tensor) while embedding coordinate and timestamp metadata."
     )
-    parser.add_argument("--input_folder", type=str, help="Path to input folder with 'train' and 'val' subfolders.")
-    parser.add_argument("--output_folder", type=str, help="Path to output folder where patched files will be saved.")
-    parser.add_argument("--vertical_anchor", type=str, default="bottom",
-                        choices=["top", "center", "bottom"],
-                        help="Vertical anchor for cropping (default: center).")
-    parser.add_argument("--horizontal_anchor", type=str, default="center",
-                        choices=["left", "center", "right"],
-                        help="Horizontal anchor for cropping (default: center).")
-    parser.add_argument("--lat_ascending", action="store_true", default=False,
-                        help="Flag indicating that the latitude array is in ascending order (default).")
-    parser.add_argument("--lat_descending", dest="lat_ascending", action="store_false",
-                        help="Flag indicating that the latitude array is in descending order.")
+    parser.add_argument(
+        "--input_folder",
+        type=str,
+        help="Path to input folder with 'train' and 'val' subfolders.",
+    )
+    parser.add_argument(
+        "--output_folder",
+        type=str,
+        help="Path to output folder where patched files will be saved.",
+    )
+    parser.add_argument(
+        "--vertical_anchor",
+        type=str,
+        default="bottom",
+        choices=["top", "center", "bottom"],
+        help="Vertical anchor for cropping (default: center).",
+    )
+    parser.add_argument(
+        "--horizontal_anchor",
+        type=str,
+        default="center",
+        choices=["left", "center", "right"],
+        help="Horizontal anchor for cropping (default: center).",
+    )
+    parser.add_argument(
+        "--lat_ascending",
+        action="store_true",
+        default=False,
+        help="Flag indicating that the latitude array is in ascending order (default).",
+    )
+    parser.add_argument(
+        "--lat_descending",
+        dest="lat_ascending",
+        action="store_false",
+        help="Flag indicating that the latitude array is in descending order.",
+    )
     parser.set_defaults(lat_ascending=True)
 
     args = parser.parse_args()
     input_folder = Path("data/finetune/geolifeclef24/aurorashape_species")
     output_folder = Path("data_patched")
 
-    process_dataset_folder(input_folder, output_folder, args.vertical_anchor, args.horizontal_anchor, args.lat_ascending)
+    process_dataset_folder(
+        input_folder,
+        output_folder,
+        args.vertical_anchor,
+        args.horizontal_anchor,
+        args.lat_ascending,
+    )

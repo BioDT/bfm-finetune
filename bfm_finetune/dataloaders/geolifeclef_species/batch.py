@@ -1,15 +1,15 @@
 import importlib
+import json
 import os
 from glob import glob
 from pathlib import Path
 from typing import List
-import json
 
 import numpy as np
 import pandas as pd
 import torch
-from tqdm import tqdm
 import typer
+from tqdm import tqdm
 
 from bfm_finetune.dataloaders.geolifeclef_species import utils
 from bfm_finetune.utils import (
@@ -50,6 +50,7 @@ def get_matrix_for_species(
             result[year_i, species_i, :, :] = matrix_species_year
     return result
 
+
 def compute_and_write_stats(species_matrix: np.ndarray, output_path: str | Path):
     # shape: [T, S, H, W]
     stats = []
@@ -60,21 +61,27 @@ def compute_and_write_stats(species_matrix: np.ndarray, output_path: str | Path)
         mean = single_species_matrix.mean()
         std = single_species_matrix.std()
         count = np.count_nonzero(single_species_matrix)
-        stats.append({
-            "species_i": species_i,
-            "min": min,
-            "max": max,
-            "mean": mean,
-            "std": std,
-            "count": count,
-        })
+        stats.append(
+            {
+                "species_i": species_i,
+                "min": min,
+                "max": max,
+                "mean": mean,
+                "std": std,
+                "count": count,
+            }
+        )
     with open(output_path, "w") as f:
         json.dump(stats, f, indent=2)
+        f.write("\n") # newline at the end
+
 
 @app.command()
 def main(only_positive_lon: bool = False, roll_negative_lon: bool = False):
     if only_positive_lon or roll_negative_lon:
-        print("Better to use only_positive_lon or roll_negative_lon only in the DataLoader")
+        print(
+            "Better to use only_positive_lon or roll_negative_lon only in the DataLoader"
+        )
     df = load_pa_csv()
     # select the most frequent species
     occurrences = (
@@ -120,9 +127,11 @@ def main(only_positive_lon: bool = False, roll_negative_lon: bool = False):
     val_folder = utils.aurorashape_species_location / "val"
     os.makedirs(train_folder, exist_ok=True)
     os.makedirs(val_folder, exist_ok=True)
-    compute_and_write_stats(species_matrix, utils.aurorashape_species_location / "stats.json")
+    compute_and_write_stats(
+        species_matrix, utils.aurorashape_species_location / "stats.json"
+    )
     # finished
-    print("shape", species_matrix.shape) # [T, S, H, W]
+    print("shape", species_matrix.shape)  # [T, S, H, W]
     paired_years_indices = [
         (i, i + 1)
         # we want all the transitions: [0,1], [1,2], [2,3] ...
@@ -141,9 +150,7 @@ def main(only_positive_lon: bool = False, roll_negative_lon: bool = False):
         else:
             # all the other go to train
             folder = train_folder
-        file_path = (
-            folder / f"yearly_species_{year_1}-{year_2}.pt"
-        )
+        file_path = folder / f"yearly_species_{year_1}-{year_2}.pt"
         filtered_matrix = species_matrix[[year1_index, year2_index], :, :, :]
         batch_structure = {
             "species_distribution": torch.Tensor(filtered_matrix),

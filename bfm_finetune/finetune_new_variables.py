@@ -1,22 +1,20 @@
-import os
 import math
-import numpy as np
-
-import mlflow
+import os
 from pathlib import Path
 
-from sklearn.decomposition import PCA
+import hydra
 import matplotlib.pyplot as plt
+import mlflow
+import numpy as np
 import seaborn as sns
-
 import torch
 import torch.nn as nn
 from aurora import Aurora, AuroraSmall
-from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import LambdaLR
-import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
+from sklearn.decomposition import PCA
+from torch.optim.lr_scheduler import LambdaLR
+from torch.utils.data import DataLoader
 
 from bfm_finetune.aurora_mod import AuroraFlex, AuroraRaw
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
@@ -24,18 +22,18 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
-from bfm_finetune.utils import (
-    save_checkpoint,
-    load_checkpoint,
-    seed_everything,
-    get_supersampling_target_lat_lon,
-    get_lat_lon_ranges,
-)
-from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
+from bfm_finetune.metrics import compute_rmse, compute_spc, compute_ssim_metric
 from bfm_finetune.plots_v2 import plot_eval
+from bfm_finetune.utils import (
+    get_lat_lon_ranges,
+    get_supersampling_target_lat_lon,
+    load_checkpoint,
+    save_checkpoint,
+    seed_everything,
+)
 
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def compute_statio_temporal_loss(outputs, targets):
     criterion = nn.MSELoss()
@@ -54,7 +52,9 @@ def compute_statio_temporal_loss(outputs, targets):
     return loss
 
 
-def train_epoch(model, dataloader, optimizer, criterion, scheduler, device, clip_value=1.0):
+def train_epoch(
+    model, dataloader, optimizer, criterion, scheduler, device, clip_value=1.0
+):
     model.train()
     epoch_loss = 0.0
     for sample in dataloader:
@@ -68,7 +68,7 @@ def train_epoch(model, dataloader, optimizer, criterion, scheduler, device, clip
         # Clip gradients
         # torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
         optimizer.step()
-        scheduler.step() # Optional
+        scheduler.step()  # Optional
         epoch_loss += loss.item()
     epoch_loss /= len(dataloader)
     return epoch_loss
@@ -147,6 +147,7 @@ def validate_epoch(model, dataloader, criterion, device):
 
     return epoch_loss
 
+
 def count_trainable_parameters(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -170,13 +171,15 @@ def main(cfg):
         base_model = AuroraSmall()
         base_model.load_checkpoint(
             "microsoft/aurora", "aurora-0.25-small-pretrained.ckpt"
-        ) 
+        )
         atmos_levels = (100, 250, 500, 850)
     elif cfg.model.big:
-        base_model = Aurora(use_lora=True)  # stabilise_level_agg=True, TODO: set strict=False 
+        base_model = Aurora(
+            use_lora=True
+        )  # stabilise_level_agg=True, TODO: set strict=False
         base_model.load_checkpoint(
             "microsoft/aurora", "aurora-0.25-pretrained.ckpt", strict=False
-        ) 
+        )
         atmos_levels = (50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
     elif cfg.model.big_ft:
         base_model = Aurora(use_lora=False)
@@ -220,14 +223,12 @@ def main(cfg):
         # customizable lat_lon
         lat_lon = get_lat_lon_ranges()
         train_dataset = ToyClimateDataset(
-            num_samples=100,
-            new_input_channels=num_species,
+            num_samples=3,
             num_species=num_species,
             lat_lon=lat_lon,
         )
         val_dataset = ToyClimateDataset(
-            num_samples=20,
-            new_input_channels=num_species,
+            num_samples=1,
             num_species=num_species,
             lat_lon=lat_lon,
         )
@@ -270,30 +271,34 @@ def main(cfg):
     #     supersampling_cfg=cfg.model.supersampling,
     #     atmos_levels=atmos_levels,
     # )
-    ### V4 
-    model = AuroraRaw(base_model=base_model)
-    
+    ### V4
+    model = AuroraRaw(base_model=base_model, n_species=num_species)
+
     params_to_optimize = model.parameters()
 
     model.to(device)
 
-    optimizer = torch.optim.AdamW(params_to_optimize, lr=cfg.training.lr, 
-                                  weight_decay=0.01, betas=(0.9, 0.95), eps=1e-8,)
+    optimizer = torch.optim.AdamW(
+        params_to_optimize,
+        lr=cfg.training.lr,
+        weight_decay=0.01,
+        betas=(0.9, 0.95),
+        eps=1e-8,
+    )
     criterion = nn.MSELoss()
 
     total_steps = num_epochs
-    warmup_steps = int(0.05 * total_steps)   # 5 % warm-up
-    min_lr_ratio = 0.05                      # final LR = 5 % of base
+    warmup_steps = int(0.05 * total_steps)  # 5 % warm-up
+    min_lr_ratio = 0.05  # final LR = 5 % of base
 
     def lr_lambda(step):
-        if step < warmup_steps:                       # linear warm-up
+        if step < warmup_steps:  # linear warm-up
             return step / float(max(1, warmup_steps))
         progress = (step - warmup_steps) / float(max(1, total_steps - warmup_steps))
-        cosine   = 0.5 * (1 + math.cos(math.pi * progress))
+        cosine = 0.5 * (1 + math.cos(math.pi * progress))
         return min_lr_ratio + (1 - min_lr_ratio) * cosine
 
     scheduler = LambdaLR(optimizer, lr_lambda)
-
 
     checkpoint_save_path = Path(output_dir) / "checkpoints"
 

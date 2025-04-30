@@ -12,11 +12,9 @@ class ToyClimateDataset(Dataset):
         self,
         lat_lon: Tuple[np.ndarray, np.ndarray],
         num_samples=10,
-        new_input_channels=10,
-        num_species=10000,
+        num_species=500,
     ):
         self.num_samples = num_samples
-        self.new_input_channels = new_input_channels
         self.num_species = num_species
 
         # Define latitude and longitude grids.
@@ -26,12 +24,6 @@ class ToyClimateDataset(Dataset):
         # self.lon = torch.linspace(0, 360, geo_size[1] + 1)[:-1]
         self.lat = torch.Tensor(lat_lon[0])
         self.lon = torch.Tensor(lat_lon[1])
-        self.metadata = Metadata(
-            lat=self.lat,
-            lon=self.lon,
-            time=(datetime(2020, 6, 1, 12, 0),),
-            atmos_levels=(100, 250, 500, 850),
-        )
         self.H, self.W = len(self.lat), len(self.lon)
         print(f"Lat {self.H} Long {self.W}")
         # Set history length T to 2 (as required by the Aurora encoder).
@@ -41,22 +33,23 @@ class ToyClimateDataset(Dataset):
         return self.num_samples
 
     def __getitem__(self, idx):
-        new_input = torch.randn(self.T, self.new_input_channels, self.H, self.W)
-        surf_vars = {"species_distribution": new_input}
-        static_vars = {k: torch.randn(self.H, self.W) for k in ("lsm", "z", "slt")}
-        atmos_vars = {
-            k: torch.randn(2, 4, self.H, self.W) for k in ("z", "u", "v", "t", "q")
+        species_distribution = torch.randn(self.T, self.num_species, self.H, self.W)
+        year = 2017 + idx
+        batch = {
+            "species_distribution": species_distribution,
+            "metadata": {
+                "lat": torch.Tensor(self.lat),
+                "lon": torch.Tensor(self.lon),
+                "time": tuple(
+                    datetime(el, 1, 1, 12, 0) for el in [year, year + 1]
+                ),
+            },
         }
-        batch = Batch(
-            surf_vars=surf_vars,
-            static_vars=static_vars,
-            atmos_vars=atmos_vars,
-            metadata=self.metadata,
-        )
-        # TODO Validate: Need to add at first dim T=1 for V2 and V3 model implementations
-        target = torch.randn(self.num_species, self.H, self.W)
+        target = torch.randn(1, self.num_species, self.H, self.W)
         return {"batch": batch, "target": target}
-    
-    def scale_species_distribution(self, species_distribution: torch.Tensor, unnormalize: bool = False) -> torch.Tensor:
+
+    def scale_species_distribution(
+        self, species_distribution: torch.Tensor, unnormalize: bool = False
+    ) -> torch.Tensor:
         # does not do anything, only for interchangeability with the real dataloaders
         return species_distribution

@@ -1,11 +1,13 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
 from pathlib import Path
+
+import cartopy.crs as ccrs
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 
 # Define the bounding box for Europe: [lon_min, lon_max, lat_min, lat_max].
 EUROPE_EXTENT = [-30, 40, 34.25, 72]
+
 
 def plot_eval(
     batch,
@@ -13,11 +15,11 @@ def plot_eval(
     out_dir: Path,
     n_species_to_plot: int = 20,
     save: bool = True,
-    region_extent=None
+    region_extent=None,
 ):
     """
     Plots evaluation results for species predictions, focusing on a specific bounding box (Europe by default).
-    
+
     Args:
         batch (Batch): A Batch object with metadata and surf_vars.
         prediction_species (torch.Tensor): Model predictions with shape [B, T, S, H, W].
@@ -39,7 +41,7 @@ def plot_eval(
 
     # shape [B, T=2, S, H, W]
     species_distribution = batch["species_distribution"]
-    t0_species = species_distribution[:, 0, :, :, :]   # shape [B, S, H, W]
+    t0_species = species_distribution[:, 0, :, :, :]  # shape [B, S, H, W]
     target_species = species_distribution[:, 1, :, :, :]
     # shape [B, T=1, S, H, W] => take first time dim
     if prediction_species is not None:
@@ -60,10 +62,13 @@ def plot_eval(
             save=save,
         )
 
-def create_subfig(fig, ax, lat, lon, matrix, title, label, region_extent, roll_back=False):
+
+def create_subfig(
+    fig, ax, lat, lon, matrix, title, label, region_extent, roll_back=False
+):
     """
     Creates an individual subplot, using a fixed bounding box (region_extent) for Europe.
-    
+
     Args:
         fig (Figure): Matplotlib figure.
         ax (Axes): Matplotlib axes with projection=ccrs.PlateCarree().
@@ -99,15 +104,11 @@ def create_subfig(fig, ax, lat, lon, matrix, title, label, region_extent, roll_b
 
     # Plot the data as a filled contour, with 60 levels.
     cf2 = ax.contourf(
-        Lon,
-        Lat,
-        matrix,
-        levels=60,
-        cmap="viridis",
-        transform=ccrs.PlateCarree()
+        Lon, Lat, matrix, levels=60, cmap="viridis", transform=ccrs.PlateCarree()
     )
     ax.set_title(title)
     fig.colorbar(cf2, ax=ax, orientation="vertical", label=label)
+
 
 def plot_single(
     t0_species: torch.Tensor,
@@ -119,11 +120,11 @@ def plot_single(
     n_species_to_plot: int,
     region_extent,
     out_dir: Path,
-    save: bool
+    save: bool,
 ):
     """
     Plots T0, Target, and Prediction for each species channel, focusing on the region_extent bounding box.
-    
+
     Args:
         t0_species (torch.Tensor): shape [S, H, W].
         target_species (torch.Tensor): shape [S, H, W].
@@ -138,9 +139,7 @@ def plot_single(
     """
     for species_i in range(n_species_to_plot):
         fig, axes = plt.subplots(
-            1, 3,
-            figsize=(18, 6),
-            subplot_kw={"projection": ccrs.PlateCarree()}
+            1, 3, figsize=(18, 6), subplot_kw={"projection": ccrs.PlateCarree()}
         )
 
         # shape [H, W]
@@ -150,27 +149,36 @@ def plot_single(
             prediction_vals = prediction_species[species_i, :, :].cpu().numpy()
 
         create_subfig(
-            fig=fig, ax=axes[0],
-            lat=lat, lon=lon, matrix=t0_vals,
+            fig=fig,
+            ax=axes[0],
+            lat=lat,
+            lon=lon,
+            matrix=t0_vals,
             title=f"Species {species_i}: T0 = {times[0]}",
             label="Value",
-            region_extent=region_extent
+            region_extent=region_extent,
         )
         create_subfig(
-            fig=fig, ax=axes[1],
-            lat=lat, lon=lon, matrix=target_vals,
+            fig=fig,
+            ax=axes[1],
+            lat=lat,
+            lon=lon,
+            matrix=target_vals,
             title=f"Species {species_i}: Target = {times[1]}",
             label="Value",
-            region_extent=region_extent
+            region_extent=region_extent,
         )
         if prediction_species is not None:
             create_subfig(
-                fig=fig, ax=axes[2],
-                lat=lat, lon=lon, matrix=prediction_vals,
+                fig=fig,
+                ax=axes[2],
+                lat=lat,
+                lon=lon,
+                matrix=prediction_vals,
                 title=f"Species {species_i}: Prediction = {times[1]}",
                 label="Value",
                 region_extent=region_extent,
-                roll_back=False
+                roll_back=False,
             )
 
         plt.tight_layout()

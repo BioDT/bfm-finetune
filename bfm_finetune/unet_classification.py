@@ -1,16 +1,16 @@
-accinfoimport os
+import os
 from datetime import datetime
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
-
 from aurora import AuroraSmall
 from aurora.batch import Batch, Metadata
+from torch.utils.data import DataLoader
 
 # Import the model wrapper from our codebase that uses Aurora as a backbone.
-from bfm_finetune.aurora_mod import AuroraExtend
+from bfm_finetune.aurora_mod import AuroraFlex, AuroraRaw  # AuroraExtend
+from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn  # added import
 
 # Import dataloader from GeoLifeCLEFSpecies
 from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
@@ -20,7 +20,6 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
 # Import plotting utility
 from bfm_finetune.plots import plot_eval
 from bfm_finetune.utils import save_checkpoint  # added import
-from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn  # added import
 
 # Configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

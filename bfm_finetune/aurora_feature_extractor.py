@@ -2,12 +2,13 @@
 Feature extractor utility for Aurora models
 """
 
+from dataclasses import replace
+from datetime import datetime  # add this import
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from aurora.batch import Batch, Metadata
-from dataclasses import replace
-from datetime import datetime  # add this import
 
 
 def extract_features(model, encoded_tensor, latent_dim=12160):
