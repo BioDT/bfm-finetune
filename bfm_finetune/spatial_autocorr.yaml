@@ -10,7 +10,7 @@ model:
   supersampling: false
 
 run:
-  device: cuda:1
+  device: cuda:0
   batch_size: 1
   output_dir: /home/tkhan/bfm-finetune/outputs
   num_samples: null # null means use all available samples
