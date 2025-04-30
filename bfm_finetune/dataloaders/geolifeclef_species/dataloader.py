@@ -58,10 +58,10 @@ class GeoLifeCLEFSpeciesDataset(Dataset):
             species_distribution, unnormalize=self.unnormalize
         )
         assert (
-            species_distribution.shape[1] == self.num_species
+            species_distribution.shape[1] >= self.num_species
         ), f"species_distribution.shape[1]={species_distribution.shape[1]}, self.num_species={self.num_species}"
         batch = {
-            "species_distribution": species_distribution,
+            "species_distribution": species_distribution[:, : self.num_species, :, :],
             "metadata": {
                 "lat": torch.Tensor(lat),
                 "lon": torch.Tensor(lon),

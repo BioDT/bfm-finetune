@@ -40,9 +40,7 @@ class ToyClimateDataset(Dataset):
             "metadata": {
                 "lat": torch.Tensor(self.lat),
                 "lon": torch.Tensor(self.lon),
-                "time": tuple(
-                    datetime(el, 1, 1, 12, 0) for el in [year, year + 1]
-                ),
+                "time": tuple(datetime(el, 1, 1, 12, 0) for el in [year, year + 1]),
             },
         }
         target = torch.randn(1, self.num_species, self.H, self.W)

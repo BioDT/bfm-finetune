@@ -10,8 +10,8 @@ training:
 
 
 dataset:
-  toy: True
-  num_species: 500
+  toy: False
+  num_species: 500 # can set here top k species
   num_workers: 15
   negative_lon_mode: ignore # roll, exclude, translate, ignore (breaks aurora if supersampling is No)
 

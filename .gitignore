@@ -1,5 +1,4 @@
 data/*
-!data/finetune/geolifeclef24/aurorashape_species/stats.json
 outputs/
 mlruns/
 # Byte-compiled / optimized / DLL files

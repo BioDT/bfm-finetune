@@ -73,24 +73,30 @@ def compute_and_write_stats(species_matrix: np.ndarray, output_path: str | Path)
         )
     with open(output_path, "w") as f:
         json.dump(stats, f, indent=2)
-        f.write("\n") # newline at the end
+        f.write("\n")  # newline at the end
 
 
 @app.command()
-def main(only_positive_lon: bool = False, roll_negative_lon: bool = False):
+def main(
+    only_positive_lon: bool = False,
+    roll_negative_lon: bool = False,
+    limit_species: int | None = None,
+):
     if only_positive_lon or roll_negative_lon:
         print(
             "Better to use only_positive_lon or roll_negative_lon only in the DataLoader"
         )
     df = load_pa_csv()
-    # select the most frequent species
+    # sort species by frequency (high first)
     occurrences = (
         df.groupby(["speciesId"])["speciesId"].count().sort_values(ascending=False)
     )
-    how_many_species = 500
-    species_ids = occurrences.index[:how_many_species].tolist()
+    if limit_species:
+        species_ids = occurrences.index[:limit_species].tolist()
+    else:
+        species_ids = occurrences.index.tolist()
 
-    # or if we want all species
+    # unsorted
     # species_ids = df["speciesId"].unique().tolist()
 
     years = sorted(int(el) for el in df["year"].unique().tolist())

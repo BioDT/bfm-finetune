@@ -16,7 +16,9 @@ def test_load_one():
     element = dataset[0]
     batch = element["batch"]
     target = element["target"]
-    assert "species_distribution" in batch, f"keys available in surf_vars: {batch.keys()}"
+    assert (
+        "species_distribution" in batch
+    ), f"keys available in surf_vars: {batch.keys()}"
     species_distribution = batch["species_distribution"]
     assert species_distribution.shape[0] == 2, species_distribution.shape
     assert species_distribution.shape[1] == 500, species_distribution.shape

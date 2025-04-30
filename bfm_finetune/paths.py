@@ -16,3 +16,7 @@ else:
     STORAGE_DIR = (REPO_FOLDER / "data").resolve()
 
 logger.warning(f"STORAGE_DIR: {STORAGE_DIR}")
+if not os.path.exists(STORAGE_DIR):
+    logger.warning(
+        f"STORAGE_DIR={STORAGE_DIR} does not exist!!!! Have you run ./initialize.sh?"
+    )

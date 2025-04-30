@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pytest
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -14,7 +15,7 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
 )
 from bfm_finetune.dataloaders.toy_dataset.dataloader import ToyClimateDataset
 from bfm_finetune.utils import get_lat_lon_ranges
-import pytest
+
 
 @pytest.mark.skip(reason="CUDA OOM")
 def test_aurora_raw():
@@ -64,7 +65,9 @@ def test_aurora_raw():
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     model.to(device)
     # new_modality_input = new_modality_input.to(device)
-    new_modality_input["species_distribution"] = new_modality_input["species_distribution"].to(device)
+    new_modality_input["species_distribution"] = new_modality_input[
+        "species_distribution"
+    ].to(device)
 
     # Forward pass.
     output: torch.Tensor = model(new_modality_input)
