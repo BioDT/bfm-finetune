@@ -13,7 +13,7 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
 )
 from bfm_finetune.unet_classification import dict_to_batch, to_device
-from bfm_finetune.aurora_mod import AuroraFlex
+from bfm_finetune.aurora_mod import AuroraFlex, AuroraRaw2
 from bfm_finetune.utils import get_supersampling_target_lat_lon
 
 
@@ -68,7 +68,7 @@ def main(cfg: DictConfig):
         lat_lon = ds.get_lat_lon()
 
     # build model
-    model = AuroraFlex(
+    model = AuroraRaw2(
         base_model=backbone,
         lat_lon=lat_lon,
         in_channels=cfg.model.in_channels,

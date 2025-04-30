@@ -35,7 +35,7 @@ from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
 from bfm_finetune.plots import plot_eval
 
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def compute_statio_temporal_loss(outputs, targets):
     criterion = nn.MSELoss()
@@ -170,13 +170,13 @@ def main(cfg):
         base_model = AuroraSmall()
         base_model.load_checkpoint(
             "microsoft/aurora", "aurora-0.25-small-pretrained.ckpt"
-        )
+        ) 
         atmos_levels = (100, 250, 500, 850)
     elif cfg.model.big:
-        base_model = Aurora(use_lora=True)  # stabilise_level_agg=True
+        base_model = Aurora(use_lora=True)  # stabilise_level_agg=True, TODO: set strict=False 
         base_model.load_checkpoint(
             "microsoft/aurora", "aurora-0.25-pretrained.ckpt", strict=False
-        )  # strict=False
+        ) 
         atmos_levels = (50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
     elif cfg.model.big_ft:
         base_model = Aurora(use_lora=False)

@@ -6,7 +6,7 @@ training:
   checkpoint_path:
   val_every: 5
   backend: fsdp #ddp
-  gpus: [0, 1]
+  gpus: 0
 
 
 dataset:

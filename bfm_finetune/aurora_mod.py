@@ -440,7 +440,7 @@ class AuroraRaw(nn.Module):
         self.encoder = TemporalSpatialEncoder(n_species=n_species)
         self.decoder = TemporalSpatialDecoder(n_species=n_species)
 
-        freeze_except_lora(base_model)
+        freeze_except_lora(base_model) # 
 
         # self.patch_res = (
         #     4,
