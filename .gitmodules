@@ -1,0 +1,3 @@
+[submodule "gravity-wave-finetuning"]
+	path = gravity-wave-finetuning
+	url = git@github.com:NASA-IMPACT/gravity-wave-finetuning.git
