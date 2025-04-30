@@ -1,10 +1,11 @@
 [project]
 name = "bfm-finetune"
 version = "0.1.0"
-description = ""
+description = "Finetuning for BFM"
 authors = [
     {name = "Thanasis Trantas",email = "thanasis.trantas@tno.nl"},
-    {name = "Martino Mensio",email = "martino.mensio@tno.nl"}
+    {name = "Martino Mensio",email = "martino.mensio@tno.nl"},
+    {name = "Taimur Khan",email = "taimur.khan@ufz.de"},
 ]
 readme = "README.md"
 requires-python = ">=3.12"
