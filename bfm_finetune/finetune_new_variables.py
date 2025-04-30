@@ -18,7 +18,7 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
-from bfm_finetune.aurora_mod import AuroraModified, AuroraExtend, AuroraFlex, AuroraRaw
+from bfm_finetune.aurora_mod import AuroraFlex, AuroraRaw
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
 from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoLifeCLEFSpeciesDataset,
