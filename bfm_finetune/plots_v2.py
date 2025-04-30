@@ -94,7 +94,8 @@ def create_subfig(fig, ax, lat, lon, matrix, title, label, region_extent, roll_b
         print("Error drawing coastlines:", e)
 
     # Clip matrix values to avoid extreme artifacts in visualization
-    matrix = np.clip(matrix, np.percentile(matrix, 1), np.percentile(matrix, 99))
+    # disabled because species are very sparse and local
+    # matrix = np.clip(matrix, np.percentile(matrix, 1), np.percentile(matrix, 99))
 
     # Plot the data as a filled contour, with 60 levels.
     cf2 = ax.contourf(
