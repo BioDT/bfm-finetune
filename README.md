@@ -2,11 +2,19 @@
 
 ## Install
 
-You can install with poetry (plain pip does not respect the specific versions):
+### If you're on Snellius
+
+On Snellius you need to execute the following first in order to use `python3.11` / `python3.12`:
 
 ```bash
-poetry install
+module purge
+# 3.11
+module load 2023 Python/3.11.3-GCCcore-12.3.0
+# or 3.12
+module load 2024 Python/3.12.3-GCCcore-13.3.0
 ```
+
+### If you don't have a recent poetry installed
 
 If you don't have poetry you can install to the local environment:
 
@@ -18,25 +26,34 @@ pip install poetry
 poetry install
 ```
 
-On snellius you need to execute the following first in order to use `python3.11` / `python3.12`:
+### Installing python dependencies
+
+You can install with poetry (plain pip does not respect the specific versions):
 
 ```bash
-module purge
-# 3.11
-module load 2023 Python/3.11.3-GCCcore-12.3.0
-# or 3.12
-module load 2024 Python/3.12.3-GCCcore-13.3.0
-# then create venv and install poetry and deps (as above)
+poetry install
 ```
 
-## File formatting - pre-commit
+### Installing pre-commit hooks
 
-To keep the code clean, `pre-commit` is installed as dev dependency. In this way, every time before a commit, the files modified will be formatted.
+To have code properly formatted and linted, we use `pre-commit`.
+It's a dev dependency that you will find installed after following the previous steps.
+
+To automatically run `pre-commit` before any commit, you need to install the git hooks with:
+
+```bash
+pre-commit install
+```
+
+### Manually run code formatting / pre-commit
+
 You can manually run the command on all the files (even if not modified) with:
 
 ```bash
 pre-commit run --all-files
 ```
+
+## Running the code
 
 ## Run some finetune workflows
 
