@@ -32,7 +32,7 @@ from bfm_finetune.utils import (
     get_lat_lon_ranges,
 )
 from bfm_finetune.metrics import compute_ssim_metric, compute_spc, compute_rmse
-from bfm_finetune.plots import plot_eval
+from bfm_finetune.plots_v2 import plot_eval
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
