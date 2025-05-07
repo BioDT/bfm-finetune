@@ -19,6 +19,7 @@ dependencies = [
     "scikit-image (>=0.25.2,<0.26.0)",
     "typer (>=0.15.2,<0.16.0)",
     "seaborn (>=0.13.2,<0.14.0)",
+    "properscoring (>=0.1,<0.2)",
 ]
 
 
