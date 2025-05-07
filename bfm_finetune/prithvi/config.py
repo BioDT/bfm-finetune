@@ -33,7 +33,7 @@ _CN.val_every = 5
 
 ### Training Params
 
-_CN.max_epochs = 50  # 520
+_CN.max_epochs = 520
 _CN.batch_size = 4
 _CN.num_data_workers = 8
 

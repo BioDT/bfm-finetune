@@ -15,10 +15,10 @@ from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (  # TODO: t
 )
 from bfm_finetune.prithvi.utils import prithvi_output_checkpoint_path
 
-# local_rank = int(os.environ["LOCAL_RANK"])
-local_rank = 0
-# global_rank = int(os.environ["RANK"])
-global_rank = 0
+local_rank = int(os.environ["LOCAL_RANK"])
+# local_rank = 0
+global_rank = int(os.environ["RANK"])
+# global_rank = 0
 device = f"cuda:{local_rank}"
 dtype = torch.float32
 
