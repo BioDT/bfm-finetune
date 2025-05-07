@@ -175,7 +175,9 @@ def main(cfg):
         atmos_levels = (100, 250, 500, 850)
     elif cfg.model.big:
         base_model = Aurora(
-            use_lora=True
+            use_lora=True,
+            lora_steps=1,
+            autocast=True,
         )  # stabilise_level_agg=True, TODO: set strict=False
         base_model.load_checkpoint(
             "microsoft/aurora", "aurora-0.25-pretrained.ckpt", strict=False
@@ -285,7 +287,7 @@ def main(cfg):
         betas=(0.9, 0.95),
         eps=1e-8,
     )
-    criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
 
     total_steps = num_epochs
     warmup_steps = int(0.05 * total_steps)  # 5 % warm-up
