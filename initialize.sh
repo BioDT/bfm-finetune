@@ -12,6 +12,7 @@ else
     python3 -m venv $VENV_PATH
 fi
 
+# install poetry
 source $VENV_PATH/bin/activate
 pip install poetry
 
@@ -19,7 +20,7 @@ pip install poetry
 # install python dependencies
 poetry install
 
-# install pre-commit git hooks
+# install pre-commit git hooks (formats code)
 pre-commit install
 
 
@@ -40,11 +41,11 @@ fi
 
 
 ######################################################################################
-# geolifeclef24
+# geolifeclef24 batches
 ######################################################################################
 
 # download source csv
-echo "downloading source csv.."
+echo "downloading geolifeclef source csv.."
 PA_CSV_URL=https://lab.plantnet.org/seafile/seafhttp/files/710990c5-411a-4512-b846-676c94f94034/GLC24-PA-metadata-train.csv
 GEOLIFECLEF_PATH=data/finetune/geolifeclef24
 mkdir -p $GEOLIFECLEF_PATH

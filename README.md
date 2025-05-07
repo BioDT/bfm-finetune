@@ -2,8 +2,6 @@
 
 ## Getting started
 
-For points 2 to 5, you can simply run the script `./initialize.sh`.
-
 ### 1. If you're on Snellius
 
 On Snellius you need to execute the following first in order to use `python3.11` / `python3.12`:
@@ -16,38 +14,13 @@ module load 2023 Python/3.11.3-GCCcore-12.3.0
 module load 2024 Python/3.12.3-GCCcore-13.3.0
 ```
 
-### 2. If you don't have a recent poetry installed
+### 2. Initialize everything
 
-If you don't have poetry you can install to the local environment:
+Run the script `./initialize.sh`.
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install poetry
-```
+### 5. Re-creating the batches
 
-### 3. Installing python dependencies
-
-You can install with poetry (plain pip does not respect the specific versions):
-
-```bash
-poetry install
-```
-
-### 4. Installing pre-commit hooks
-
-To have code properly formatted and linted, we use `pre-commit`.
-It's a dev dependency that you will find installed after following the previous steps.
-
-To automatically run `pre-commit` before any commit, you need to install the git hooks with:
-
-```bash
-pre-commit install
-```
-
-### 5. Creating the batches
-
-For geolifeclef24 dataset, you can create the batches with:
+For geolifeclef24 dataset, you can recreate the batches with:
 
 ```bash
 python bfm_finetune/dataloaders/geolifeclef_species/batch.py
@@ -75,6 +48,8 @@ First get some resources if you are in the cluster.
 salloc -p gpu_h100 --gpus-per-node=1 -t 01:00:00
 ```
 
+### Aurora Fine-Tune
+
 1) In an activated environment, run `python bfm_finetune/finetune_new_variables.py`.
 
 2) You can select to debug your finetune models using the toy dataset by changing the flag `finetune_new_variables(use_toy=True)`
@@ -83,11 +58,11 @@ salloc -p gpu_h100 --gpus-per-node=1 -t 01:00:00
 
 4) You can do parallel training if your hardware supports it, by running the command `finetune_new_variables_multi_gpu.py`. You can edit the `finetune_config.yaml` to support your settings, e.g. fsdp vs ddp or the gpus ids [0,1].
 
-## Visualise predictions
+#### Visualise predictions
 
 You can visualise the predictions of the finetuned model by using the notebook `visualise_eval.ipynb`. Just change the **PATH** variable to map the location of your checkpoint.
 
-### Experimentation - Work in progress
+#### Experimentation - Work in progress
 
 An intro script with a toy example, using the small Aurora model and finetuning with the below logic is `finetune_new_variables.py`.
 
@@ -102,6 +77,12 @@ The modified model uses a new output head to generate high-dimensional outputs (
 The collate function just merges multiple samples into one batch. It doesn’t change how the new input is handled—it merely stacks the custom Batch objects so that the model receives them correctly.
 
 *NOTE: We are currently using the Aurora small for integration experiments. In the future we will adapt the codebase for using the BFM.*
+
+### Prithvi-WxC Fine-Tune
+
+Start the fine-tune training: `bfm_finetune/prithvi/train.sh`
+
+Inference: `bfm_finetune/prithvi/inference.sh`
 
 ## TODOs
 
