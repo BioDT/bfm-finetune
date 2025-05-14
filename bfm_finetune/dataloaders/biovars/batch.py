@@ -50,3 +50,16 @@ print(dem)
 #     spatial_ref  int64 8B ...
 # Data variables:
 #     band_data    (band, y, x) float32 233MB ...
+
+import matplotlib.pyplot as plt
+import rasterio
+from rasterio.plot import show
+
+# img = rasterio.open(tiff_path)
+# show(img)
+with rasterio.open(tiff_path) as src:
+    fig, ax = plt.subplots(figsize=(10, 10))
+    show(src, ax=ax, title="Raster Image")
+    # Save the figure to a file
+    plt.savefig("raster_plot.png", dpi=300, bbox_inches="tight")
+    plt.close()
