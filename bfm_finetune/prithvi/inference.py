@@ -10,7 +10,6 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 import tqdm
-import xarray as xr
 from gravity_wave_finetuning.gravity_wave_model import UNetWithTransformer
 from matplotlib.colors import TwoSlopeNorm
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -122,7 +121,7 @@ def stitch_and_plot(
             subplot_kw={"projection": ccrs.PlateCarree()}, figsize=(10, 6)
         )
         # Make sure to pass scalar floats
-        print("lon_ful ", lon_full, "\n lat full", lat_full)
+        # print("lon_ful ", lon_full, "\n lat full", lat_full)
         ax.set_extent(
             [
                 float(lon_full[0]),
@@ -155,6 +154,7 @@ def stitch_and_plot(
         plt.tight_layout()
         plt.savefig(str(results_dir / f"inference_channel_{channel_to_plot}.png"))
         plt.show()
+    print(f"Saving result fig at {results_dir}")
     return stitched_data, row_start, col_start
 
 

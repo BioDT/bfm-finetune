@@ -21,7 +21,7 @@ _CN.singular_sharded_checkpoint = (
 )
 _CN.file_glob_pattern = "wxc_input_u_v_t_p_output_theta_uw_vw_era5_*.nc"
 
-_CN.lr = 0.01
+_CN.lr = 0.01  # Can be 0.001
 _CN.hidden_channels = 160
 _CN.n_lats_px = 64  # 152 #64
 _CN.n_lons_px = 128  # 320 #128
@@ -33,7 +33,7 @@ _CN.val_every = 5
 
 ### Training Params
 
-_CN.max_epochs = 520
+_CN.max_epochs = 21  # 121 For good results
 _CN.batch_size = 4
 _CN.num_data_workers = 8
 

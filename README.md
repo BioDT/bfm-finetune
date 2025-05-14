@@ -67,18 +67,21 @@ You can visualise the predictions of the finetuned model by using the notebook `
 An intro script with a toy example, using the small Aurora model and finetuning with the below logic is `finetune_new_variables.py`.
 
 Concept:
-- Input Adapter:
-The new input (with, for example, 10 channels) is passed through a LoRA-based input adapter. This adapter maps the 10 channels to the 4 channels that the pretrained Aurora model expects. This is crucial for ensuring compatibility without retraining the whole encoder.
+- Spatiotemporal Encoder:
+The new input (with, for example, 500 channels/species) is passed through a series of convolutional layers to match the backbone's input shape.
 
-- New Decoder Head:
-The modified model uses a new output head to generate high-dimensional outputs (like 10,000 species occurrences). This head is trained while the rest of the model remains frozen.
+- Frozen Backbone & LoRA Finetune:
+The backbone is frozen and LoRA adapters are added to the attention heads.
 
-- Custom Collate Function:
-The collate function just merges multiple samples into one batch. It doesn’t change how the new input is handled—it merely stacks the custom Batch objects so that the model receives them correctly.
+- Spatiotemporal Decoder:
+The backbone's output is reconstructed after a series of convolutional layer back to the coordinate grid.
 
 *NOTE: We are currently using the Aurora small for integration experiments. In the future we will adapt the codebase for using the BFM.*
 
 ### Prithvi-WxC Fine-Tune
+*Experimental*
+
+In this setting, we finetune keeping frozen the Prithvi-WxC backbone and using the same U-net style encoder-decoder architecture that was used during the gravite-wave finetuning routine.
 
 Start the fine-tune training: `bfm_finetune/prithvi/train.sh`
 
@@ -90,7 +93,7 @@ Inference: `bfm_finetune/prithvi/inference.sh`
 * [x] Checkpointing & Loading
 * [x] Result visualisation
 * [ ] Validate new visualisations & metrics
-* [ ] Compare with baselines
+* [ ] Compare with baselines (50%)
 * [x] Upsample to (721, 1440) earth grid in the encoder and downsample to (152, 320) in decoder. Edit the coordinates on the dataset
 * [x] Normalization on train data
 * [x] Validate way of Lat Long (H,W) processed from the model but also from our dataset/plotting functions
