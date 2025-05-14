@@ -6,7 +6,7 @@ from typing import Literal, Tuple
 
 import numpy as np
 import torch
-from aurora.batch import Batch, Metadata
+from aurora.batch import Batch
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 

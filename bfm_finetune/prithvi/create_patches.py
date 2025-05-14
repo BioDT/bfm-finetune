@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 import argparse
-import os
 from pathlib import Path
 
 import numpy as np
 import torch
 
-from bfm_finetune import paths
 from bfm_finetune.dataloaders.geolifeclef_species.utils import (
     aurorashape_species_location,
 )

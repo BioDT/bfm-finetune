@@ -1,9 +1,8 @@
 #!/bin/bash
 set -e
 
-
 # poetry to venv
-VENV_PATH=venv
+VENV_PATH=.venv
 if test -d $VENV_PATH; then
     echo "venv: $VENV_PATH already exists, using it"
 else
@@ -14,8 +13,10 @@ fi
 
 # install poetry
 source $VENV_PATH/bin/activate
+pip install -U pip setuptools wheel
 pip install poetry
 
+git submodule update --init --recursive
 
 # install python dependencies
 poetry install
@@ -23,11 +24,9 @@ poetry install
 # install pre-commit git hooks (formats code)
 pre-commit install
 
-
 ######################################################################################
 # prithvi gravity wave finetuning
 ######################################################################################
-git submodule update --init --recursive
 PRITHVI_CHECKPOINT_URL=https://huggingface.co/ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout/resolve/main/prithvi.wxc.rollout.2300m.v1.pt?download=true
 PRITHVI_CHECKPOINT_PATH=checkpoints/prithvi.wxc.rollout.2300m.v1.pt
 if test -f $PRITHVI_CHECKPOINT_PATH; then
@@ -39,14 +38,13 @@ else
     echo "PRITHVI_CHECKPOINT_PATH downloaded to $PRITHVI_CHECKPOINT_PATH"
 fi
 
-
 ######################################################################################
 # geolifeclef24 batches
 ######################################################################################
 
 # download source csv
 echo "downloading geolifeclef source csv.."
-PA_CSV_URL=https://lab.plantnet.org/seafile/seafhttp/files/710990c5-411a-4512-b846-676c94f94034/GLC24-PA-metadata-train.csv
+PA_CSV_URL=https://lab.plantnet.org/seafile/seafhttp/files/0a378e07-23c6-4321-bcba-0794819955aa/GLC24-PA-metadata-train.csv
 GEOLIFECLEF_PATH=data/finetune/geolifeclef24
 mkdir -p $GEOLIFECLEF_PATH
 wget $PA_CSV_URL -O $GEOLIFECLEF_PATH/GLC24_PA_metadata_train.csv

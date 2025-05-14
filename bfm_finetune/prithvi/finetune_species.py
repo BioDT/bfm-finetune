@@ -10,7 +10,7 @@ from gravity_wave_finetuning.gravity_wave_model import UNetWithTransformer
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 # import wandb
-from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (  # TODO: test that it works properly
+from bfm_finetune.dataloaders.geolifeclef_species.dataloader import (
     GeoCLEFDataModulePrithvi,
 )
 from bfm_finetune.prithvi.utils import prithvi_output_checkpoint_path
