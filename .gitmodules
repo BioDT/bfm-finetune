@@ -1,0 +1,4 @@
+[submodule "gravity-wave-finetuning"]
+	path = gravity-wave-finetuning
+	url = git@github.com:BioDT/gravity-wave-finetuning.git
+	branch = feature/module
