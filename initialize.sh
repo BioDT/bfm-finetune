@@ -59,4 +59,28 @@ python bfm_finetune/dataloaders/geolifeclef_species/batch.py
 echo "creating batches for geolifeclef+prithvi..."
 python bfm_finetune/prithvi/create_patches.py
 
+
+
+######################################################################################
+# biovars batches
+######################################################################################
+
+echo "preparing biovars files.."
+BIOVARS_FILE_NAME_WITHOUT_EXTENSION=bioVars_1971-2000_met
+BIOVARS_FILE_NAME_WITH_EXTENSION=$BIOVARS_FILE_NAME_WITHOUT_EXTENSION.tar.gz
+BIOVARS_URL=https://zenodo.org/records/14624171/files/$BIOVARS_FILE_NAME_WITH_EXTENSION?download=1
+BIOVARS_PATH=data/finetune/biovars
+BIOVARS_EXTRACTED_PATH=$BIOVARS_PATH/$BIOVARS_FILE_NAME_WITHOUT_EXTENSION
+BIOVARS_FILE_PATH=$BIOVARS_PATH/$BIOVARS_FILE_NAME_WITH_EXTENSION
+mkdir -p $BIOVARS_PATH
+if test -f $BIOVARS_FILE_PATH; then
+    echo "BIOVARS_FILE_PATH: $BIOVARS_FILE_PATH already exists, using it"
+else
+    wget $BIOVARS_URL -O $BIOVARS_FILE_PATH
+fi
+mkdir -p $BIOVARS_EXTRACTED_PATH
+tar -xvzf $BIOVARS_FILE_PATH -C $BIOVARS_EXTRACTED_PATH
+
+echo "creating batches for geolifeclef..."
+
 echo "DONE!"
