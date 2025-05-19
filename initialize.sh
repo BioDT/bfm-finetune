@@ -44,10 +44,15 @@ fi
 
 # download source csv
 echo "downloading geolifeclef source csv.."
-PA_CSV_URL=https://lab.plantnet.org/seafile/seafhttp/files/0a378e07-23c6-4321-bcba-0794819955aa/GLC24-PA-metadata-train.csv
+PA_CSV_URL=https://lab.plantnet.org/seafile/d/bdb829337aa44a9489f6/files/?p=%2FPresenceAbsenceSurveys%2FGLC24-PA-metadata-train.csv
 GEOLIFECLEF_PATH=data/finetune/geolifeclef24
-mkdir -p $GEOLIFECLEF_PATH
-wget $PA_CSV_URL -O $GEOLIFECLEF_PATH/GLC24_PA_metadata_train.csv
+GEOLIFECLEF_FILE=$GEOLIFECLEF_PATH/GLC24_PA_metadata_train.csv
+if test -f $GEOLIFECLEF_FILE; then
+    echo "GEOLIFECLEF_FILE: $GEOLIFECLEF_FILE already exists, using it"
+else
+    mkdir -p $GEOLIFECLEF_PATH
+    python bfm_finetune/plantnet_downloader.py $PA_CSV_URL $GEOLIFECLEF_FILE
+fi
 
 echo "creating batches for geolifeclef..."
 python bfm_finetune/dataloaders/geolifeclef_species/batch.py
