@@ -32,8 +32,6 @@ from bfm_finetune.utils import (
     seed_everything,
 )
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-
 
 def compute_statio_temporal_loss(outputs, targets):
     criterion = nn.MSELoss()
@@ -156,6 +154,10 @@ def count_trainable_parameters(model: nn.Module) -> int:
 def main(cfg):
 
     print(OmegaConf.to_yaml(cfg))
+
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = cfg.training.gpu
+
     # Set the internal precision for TensorCores (H100s)
     torch.set_float32_matmul_precision(cfg.training.precision_in)
 
