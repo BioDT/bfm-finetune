@@ -38,6 +38,15 @@ else
     echo "PRITHVI_CHECKPOINT_PATH downloaded to $PRITHVI_CHECKPOINT_PATH"
 fi
 
+
+######################################################################################
+# BFM finetuning
+######################################################################################
+# checkpoint (snellius): /projects/prjs1134/data/projects/biodt/storage/weights/epoch=268-val_loss=0.00493.ckpt
+# TODO: update script to download from huggingface when will be published there
+# checkpoint (non-snellius): data/weights/epoch=268-val_loss=0.00493.ckpt
+
+
 ######################################################################################
 # geolifeclef24 batches
 ######################################################################################
