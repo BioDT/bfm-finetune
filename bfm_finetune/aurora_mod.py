@@ -241,11 +241,13 @@ class AuroraRaw(nn.Module):
         x = batch["species_distribution"]
         tokens = self.encoder(x)  # (B, 259 200, 512)
         # with torch.inference_mode():
+        # print(tokens.shape)
         feats = self.base_model.backbone(
             tokens,
             lead_time=timedelta(hours=6.0),
             patch_res=self.patch_res,
             rollout_step=1,
         )  # (B, 259 200, 1024)
+        # print(feats.shape)
         recon = self.decoder(feats)  # (B, N, 152, 320)
         return recon
