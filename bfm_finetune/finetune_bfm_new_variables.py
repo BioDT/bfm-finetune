@@ -35,10 +35,10 @@ checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
 if not os.path.exists(checkpoint_file):
     raise ValueError(f"checkpoint not found: {checkpoint_file}")
 
-checkpoint = torch.load(checkpoint_file)
-checkpoint.keys()
-# dict_keys(['epoch', 'global_step', 'pytorch-lightning_version', 'state_dict', 'loops', 'callbacks', 'optimizer_states', 'lr_schedulers'])
-checkpoint["state_dict"].keys()  # here all the weights
+# checkpoint = torch.load(checkpoint_file)
+# checkpoint.keys()
+# # dict_keys(['epoch', 'global_step', 'pytorch-lightning_version', 'state_dict', 'loops', 'callbacks', 'optimizer_states', 'lr_schedulers'])
+# checkpoint["state_dict"].keys()  # here all the weights
 
 
 # raise ValueError(REPO_FOLDER)

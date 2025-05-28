@@ -48,7 +48,8 @@ class BFMRaw(nn.Module):
         self.encoder = TemporalSpatialEncoder(n_species=n_species, embed_dim=256)
         self.decoder = TemporalSpatialDecoder(n_species=n_species, in_dim=256)
 
-        freeze_except_lora(base_model)  #
+        if freeze_backbone:
+            freeze_except_lora(base_model)  #
         total = sum(p.numel() for p in self.parameters())
         trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
         print(f"{trainable/1e6:.2f} M / {total/1e6:.2f} M parameters will update")
