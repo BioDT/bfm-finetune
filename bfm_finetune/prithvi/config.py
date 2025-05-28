@@ -1,6 +1,6 @@
 from yacs.config import CfgNode as CN
 
-from bfm_finetune.paths import REPO_FOLDER
+from bfm_finetune.paths import STORAGE_DIR
 from bfm_finetune.prithvi.utils import prithvi_species_patches_location
 
 _CN = CN()
@@ -17,7 +17,7 @@ _CN.vartype = "uvtp122"
 # )
 _CN.singular_sharded_checkpoint = (
     # "prithvi_wxc/v0.8.50.rollout_step3.1.pth"
-    str(REPO_FOLDER / "checkpoints/prithvi.wxc.rollout.2300m.v1.pt")
+    str(STORAGE_DIR / "checkpoints_prithvi/prithvi.wxc.rollout.2300m.v1.pt")
 )
 _CN.file_glob_pattern = "wxc_input_u_v_t_p_output_theta_uw_vw_era5_*.nc"
 
