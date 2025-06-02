@@ -81,20 +81,20 @@ def main(cfg: DictConfig):
     for i, date_str in enumerate(time_index):
         try:
             dt = pd.to_datetime(date_str)
-            if dt <= end_date:
-                # Quick check if files exist
-                year, month = dt.year, dt.month
-                tas_path = os.path.join(cfg.data.tas_dir, f"CHELSA_tas_{month:02d}_{year}_V.2.1.tif")
-                pr_path = os.path.join(cfg.data.pr_dir, f"CHELSA_pr_{month:02d}_{year}_V.2.1.tif")
+            # if dt <= end_date:
+            #     # Quick check if files exist
+            #     year, month = dt.year, dt.month
+            #     tas_path = os.path.join(cfg.data.tas_dir, f"CHELSA_tas_{month:02d}_{year}_V.2.1.tif")
+            #     pr_path = os.path.join(cfg.data.pr_dir, f"CHELSA_pr_{month:02d}_{year}_V.2.1.tif")
                 
-                if os.path.exists(tas_path) and os.path.exists(pr_path):
-                    valid_time_index.append(date_str)
-                    valid_indices.append(i)
-                    print(f"Found valid data for {date_str}")
-                else:
-                    print(f"Files not found for {date_str}")
-            else:
-                print(f"Skipping {date_str} as it's after cutoff date {end_date}")
+            #     if os.path.exists(tas_path) and os.path.exists(pr_path):
+            #         valid_time_index.append(date_str)
+            #         valid_indices.append(i)
+            #         print(f"Found valid data for {date_str}")
+            #     else:
+            #         print(f"Files not found for {date_str}")
+            # else:
+            #     print(f"Skipping {date_str} as it's after cutoff date {end_date}")
         except Exception as e:
             print(f"Error parsing date {date_str}: {e}")
     
