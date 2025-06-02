@@ -1,23 +1,3 @@
-device: cuda:0
-
-grid:
-  lat_start: 32.0
-  lat_end: 72.0
-  lon_start: -25.0
-  lon_end: 45.0
-  resolution: 0.25
-
-#data:
-#  tas_dir: /home/tkhan/biodt/storage/finetune/chelsa/tas_raw
-#  pr_dir: /home/tkhan/biodt/storage/finetune/chelsa/pr_raw
-
-
-output:
-  file: /home/tkhan/biodt/storage/finetune/chelsa/chelsa_bfm_latents_downsampled.nc
-
-# model + loader logic should be defined in your custom script
-# e.g. `batch_model_loader.py` with a method `get_bfm_model_and_dataloader(cfg)`
-
 model:
   T: 2   # Time steps
   surface_vars: ["t2m", "msl", "slt", "z", "u10", "v10", "lsm"] # Surface variables
@@ -50,16 +30,13 @@ model:
 data:
   atmos_levels: [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]
   species_number: 28 # available species
-  data_path: /home/tkhan/biodt/storage/final_dataset_monthly/train
-  test_data_path: /home/tkhan/biodt/storage/final_dataset_monthly/test
-  #land_mask_path: batch_statistics/europe_Land_2020_grid.pkl
-  tas_dir: /home/tkhan/biodt/storage/finetune/chelsa/tas_raw
-  pr_dir: /home/tkhan/biodt/storage/finetune/chelsa/pr_raw
-  output:
-    file: /home/tkhan/biodt/storage/finetune/chelsa/chelsa_bfm_latents_downsampled.nc
+  data_path: /projects/prjs1134/data/projects/biodt/storage/final_dataset_monthly/train
+  test_data_path: /projects/prjs1134/data/projects/biodt/storage/final_dataset_monthly/test
+  land_mask_path: batch_statistics/europe_Land_2020_grid.pkl
+  
   scaling:
     enabled: False
-    stats_path: /home/tkhan/biodt/storage/monthly_batches/statistics/monthly_batches_stats_splitted_channels.json
+    stats_path: /projects/prjs1134/data/projects/biodt/storage/monthly_batches/statistics/monthly_batches_stats_splitted_channels.json
     mode: normalize # normalize (mean and std), standardize (min-max)
 
 training:
@@ -90,9 +67,9 @@ mlflow:
   port: 8082 # change here port if you get [Errno 98] Address already in use
 
 evaluation:
-  test_data: /home/tkhan/biodt/storage/final_dataset_monthly/test
-  rollout_data: /home/tkhan/biodt/storage/final_dataset_monthly/rollout # Need to have 2 batch samples for the rollout to work with
-  checkpoint_path: /home/tkhan/biodt/storage/weights/epoch=268-val_loss=0.00493.ckpt #/home/atrantas/bfm-model/outputs/2025-05-25/12-36-44/checkpoints/epoch=65-val_loss=36.95078.ckpt #/home/atrantas/bfm-model/outputs/2025-05-24/19-55-32/checkpoints/epoch=158-val_loss=0.00413.ckpt #/home/atrantas/bfm-model/outputs/2025-05-24/15-29-50/checkpoints/epoch=26-val_loss=0.00631.ckpt
+  test_data: /projects/prjs1134/data/projects/biodt/storage/final_dataset_monthly/test
+  rollout_data: /home/thanasis.trantas/git_projects/bfm-model/data_small/rollout_monthly # Need to have 2 batch samples for the rollout to work with
+  checkpoint_path: /home/thanasis.trantas/git_projects/bfm-model/weights/epoch=268-val_loss=0.00493.ckpt #/home/atrantas/bfm-model/outputs/2025-05-25/12-36-44/checkpoints/epoch=65-val_loss=36.95078.ckpt #/home/atrantas/bfm-model/outputs/2025-05-24/19-55-32/checkpoints/epoch=158-val_loss=0.00413.ckpt #/home/atrantas/bfm-model/outputs/2025-05-24/15-29-50/checkpoints/epoch=26-val_loss=0.00631.ckpt
   batch_size: 1
   test_device: "cuda:0"
 

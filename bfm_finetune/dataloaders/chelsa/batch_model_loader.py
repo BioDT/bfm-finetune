@@ -37,16 +37,11 @@ class BFMWithLatent(BFM_lighting):
         return encoded, backbone_output, output
 
 
-def get_bfm_model_and_dataloader(cfg):
+def get_bfm_model_and_dataloader(bfm_cfg):
     """Function to load BFM model and dataloader as specified in the config"""
     checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
     if not os.path.exists(checkpoint_file):
         raise ValueError(f"checkpoint not found: {checkpoint_file}")
-    
-    # Configure BFM model
-    bfm_config_path = f"../bfm-model/bfm_model/bfm/configs"
-    with initialize(version_base=None, config_path=bfm_config_path, job_name="test_app"):
-        bfm_cfg = compose(config_name="train_config.yaml")
     
     # Setup Swin parameters if needed
     swin_params = {}
@@ -66,7 +61,7 @@ def get_bfm_model_and_dataloader(cfg):
             "swin_use_lora": selected_swin_config.use_lora,
         }
     
-    # BFM args
+    # BFM args - same as in bfm_get_latent.py
     bfm_args = dict(
         surface_vars=(bfm_cfg.model.surface_vars),
         edaphic_vars=(bfm_cfg.model.edaphic_vars),
@@ -94,15 +89,10 @@ def get_bfm_model_and_dataloader(cfg):
         **swin_params,
     )
     
-    # Load model from checkpoint
+    # Load model from checkpoint - exactly as in bfm_get_latent.py
     model = BFMWithLatent.load_from_checkpoint(checkpoint_path=checkpoint_file, **bfm_args)
     
     # Setup dataset and dataloader
-    bfm_cfg.evaluation.test_data = str(STORAGE_DIR / "data_monthly")
-    bfm_cfg.data.scaling.stats_path = str(
-        STORAGE_DIR / "data_monthly" / "all_batches_stats.json"
-    )
-    
     test_dataset = LargeClimateDataset(
         data_dir=bfm_cfg.evaluation.test_data,
         scaling_settings=bfm_cfg.data.scaling,
@@ -120,6 +110,25 @@ def get_bfm_model_and_dataloader(cfg):
         shuffle=False,
     )
     
-    time_index = test_dataset.get_time_index()
+    # Extract filenames to use as time indices - instead of calling get_time_index()
+    # Get file list from dataset
+    time_index = []
+    data_dir = bfm_cfg.evaluation.test_data
+    files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith(".pt")]
+    files.sort()  # Sort to ensure consistent ordering
+    
+    # Extract dates from filenames (assuming format like "batch_2018-06-01_to_2018-07-01.pt")
+    for file in files:
+        filename = os.path.basename(file)
+        # Try to extract date range from filename
+        parts = filename.split('_')
+        if len(parts) >= 3 and "to" in filename:
+            # e.g., batch_2018-06-01_to_2018-07-01.pt
+            date_range = "_".join(parts[1:]).replace(".pt", "")
+            start_date = date_range.split("_to_")[0]
+            time_index.append(start_date)
+        else:
+            # If filename doesn't match expected pattern, use filename as index
+            time_index.append(filename)
     
     return model, test_dataloader, time_index
