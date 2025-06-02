@@ -139,9 +139,12 @@ class BFMWithLatent(BFM_lighting):
 model = BFMWithLatent.load_from_checkpoint(checkpoint_path=checkpoint_file, **bfm_args)
 
 # Batch path (overriden) # bfm_cfg.evaluation.test_data
-bfm_cfg.evaluation.test_data = str(STORAGE_DIR / "data_monthly")
+bfm_cfg.evaluation.test_data = str(STORAGE_DIR / "monthly_batches" / "batches")
 bfm_cfg.data.scaling.stats_path = str(
-    STORAGE_DIR / "data_monthly" / "all_batches_stats.json"
+    STORAGE_DIR
+    / "monthly_batches"
+    / "statistics"
+    / "monthly_batches_stats_splitted_channels.json"
 )
 
 test_dataset = LargeClimateDataset(
@@ -150,6 +153,7 @@ test_dataset = LargeClimateDataset(
     num_species=bfm_cfg.data.species_number,
     atmos_levels=bfm_cfg.data.atmos_levels,
     model_patch_size=bfm_cfg.model.patch_size,
+    max_files=3,
 )
 print("Reading test data from :", bfm_cfg.evaluation.test_data)
 test_dataloader = DataLoader(
