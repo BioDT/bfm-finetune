@@ -1,0 +1,17 @@
+device: cuda
+
+grid:
+  lat_start: 32.0
+  lat_end: 72.0
+  lon_start: -25.0
+  lon_end: 45.0
+  resolution: 0.25
+
+data:
+  tas_dir: /home/tkhan/biodt/storage/finetune/chelsa/tas_raw
+  pr_dir: /home/tkhan/biodt/storage/finetune/chelsa/pr_raw
+output:
+  file: /home/tkhan/biodt/storage/finetune/chelsa/chelsa_bfm_latents_downsampled.nc
+
+# model + loader logic should be defined in your custom script
+# e.g. `batch_model_loader.py` with a method `get_bfm_model_and_dataloader(cfg)`
