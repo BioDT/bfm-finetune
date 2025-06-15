@@ -20,6 +20,8 @@ Run the script `./initialize.sh`.
 
 ### 5. Re-creating the batches
 
+
+#### Biotic Task
 For geolifeclef24 dataset, you can recreate the batches with:
 
 ```bash
@@ -32,6 +34,16 @@ Keep in mind that the less frequent ones appear only in a few cells of the grid 
 
 Inside the batches saved to disk, `species_distribution` has shape `[T=2, Species, H, W]`.
 
+#### Abiotic Task
+
+For the CHELSA-BFMLatents dataset, you can recreate the batches with:
+
+```bash
+python bfm_finetune/dataloaders/chelsa/batch.py
+```
+This will create yearly batches for all the 19 CHELSA variables. You can then configure in `bfm_finetune/finetune_config.yaml` for the time period you want to use (e.g. setting to 2010-2020, will take the 11 years of data), along with other parameters for the backbone and the decoder
+
+The results will be save as a netcdf file in the path defined in
 ### 6. Manually run code formatting / pre-commit
 
 You can manually run the command on all the files (even if not modified) with:

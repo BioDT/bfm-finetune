@@ -4,6 +4,7 @@ from pathlib import Path
 import torch
 from hydra import compose, initialize
 from torch.utils.data import DataLoader
+import lightning as L
 
 from bfm_model.bfm.dataloader_monthly import (
     LargeClimateDataset,
@@ -35,6 +36,24 @@ class BFMWithLatent(BFM_lighting):
         )
         output = self.decoder(backbone_output, batch, lead_time)
         return encoded, backbone_output, output
+    
+     # overridden to return latents
+    def predict_step(self, batch, batch_idx):
+        records = []
+        x, y = batch
+        encoded, backbone_output, output = self(
+            x, self.lead_time, batch_size=self.batch_size
+        )
+        records.append(
+            {
+                "idx": batch_idx,
+                "pred": output,
+                "gt": y,
+                "encoded": encoded,
+                "backbone_output": backbone_output,
+            }
+        )
+        return records
 
 
 def get_bfm_model_and_dataloader(bfm_cfg):
@@ -130,5 +149,26 @@ def get_bfm_model_and_dataloader(bfm_cfg):
         else:
             # If filename doesn't match expected pattern, use filename as index
             time_index.append(filename)
+            
     
-    return model, test_dataloader, time_index
+    trainer = L.Trainer(
+        accelerator=bfm_cfg.training.accelerator,
+        devices=bfm_cfg.training.devices,
+        precision=bfm_cfg.training.precision,
+        log_every_n_steps=bfm_cfg.training.log_steps,
+        # limit_test_batches=1,
+        #limit_predict_batches=228,  # TODO Change this to select how many consecutive months you want to predict
+        logger=[],  # [mlf_logger_in_hydra_folder, mlf_logger_in_current_folder],
+        enable_checkpointing=False,
+        enable_progress_bar=True,
+    )
+    print("The lnegth of the test_dataloader:", len(test_dataloader))  # Force dataset to load and check for errors
+    
+    predictions = trainer.predict(
+    model=model, ckpt_path=checkpoint_file, dataloaders=test_dataloader
+    )
+    # Generate time_index for all months from 2000-01 to 2019-12
+    import pandas as pd
+    time_index = pd.date_range("2000-01-01", "2020-12-01", freq="MS").strftime("%Y-%m-%d").tolist()
+
+    return model, test_dataloader, time_index, predictions
