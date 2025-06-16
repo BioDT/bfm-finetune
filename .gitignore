@@ -1,4 +1,5 @@
 foo/
+outputs_bfm_finetune/
 data/*
 outputs/
 mlruns/

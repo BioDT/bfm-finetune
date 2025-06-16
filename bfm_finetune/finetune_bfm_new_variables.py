@@ -126,7 +126,7 @@ num_epochs = finetune_cfg.training.epochs
 
 # TODO
 # output_dir = HydraConfig.get().runtime.output_dir
-output_dir = "foo"
+output_dir = "outputs_bfm_finetune"
 
 # THE FOLLOWING IS COPIED FROM finetune_new_variables.py
 

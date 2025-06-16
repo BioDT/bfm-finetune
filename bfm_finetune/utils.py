@@ -11,9 +11,9 @@ from sklearn.metrics import roc_auc_score
 
 
 def get_lat_lon_ranges(
-    min_lon: float = -30.0,
-    max_lon: float = 50.0,
-    min_lat: float = 34.0,
+    min_lon: float = -25.0,
+    max_lon: float = 45.0,
+    min_lat: float = 32.0,
     max_lat: float = 72.0,
     lon_step: float = 0.25,
     lat_step: float = 0.25,

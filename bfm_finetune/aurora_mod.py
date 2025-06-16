@@ -132,12 +132,14 @@ class TemporalSpatialEncoder(nn.Module):
         n_species: int = 500,
         n_timesteps: int = 2,
         embed_dim: int = 512,
-        target_hw: Tuple[int, int] = (180, 360),  # (360, 720),
+        target_hw: Tuple[int, int] = (160, 280),  # (360, 720),
     ) -> None:
         super().__init__()
         in_channels = n_species * n_timesteps  # 1000
         self.target_hw = target_hw
-        self.proj = nn.Conv2d(in_channels, embed_dim, kernel_size=1, bias=False)
+        self.proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=1, bias=False, padding_mode="circular"
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, T, C, H, W) → (B, T*C, H, W)
@@ -159,13 +161,15 @@ class TemporalSpatialDecoder(nn.Module):
         self,
         n_species: int = 500,
         in_dim: int = 1024,
-        source_hw: Tuple[int, int] = (180, 360),  # (360, 720),
-        final_hw: Tuple[int, int] = (152, 320),
+        source_hw: Tuple[int, int] = (160, 280),  # (360, 720),
+        final_hw: Tuple[int, int] = (160, 280),
     ) -> None:
         super().__init__()
         self.source_hw = source_hw
         self.final_hw = final_hw
-        self.proj = nn.Conv2d(in_dim, n_species, kernel_size=1, bias=False)
+        self.proj = nn.Conv2d(
+            in_dim, n_species, kernel_size=1, bias=False, padding_mode="circular"
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, p, d = x.shape  # (B, 259 200, 1024)

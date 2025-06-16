@@ -61,10 +61,15 @@ class BFMRaw(nn.Module):
         """
         x = batch["species_distribution"]
         encoded = self.encoder(x)
+        # patch_shape = (
+        #     23,
+        #     40,
+        #     70,
+        # )
         patch_shape = (
-            4,
-            90,
-            180,
+            16,
+            70,
+            40,
         )
         # print("patch_shape", patch_shape)
         print(encoded.shape)
