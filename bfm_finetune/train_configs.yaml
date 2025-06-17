@@ -3,7 +3,7 @@ model:
   surface_vars: ["t2m", "msl", "slt", "z", "u10", "v10", "lsm"] # Surface variables
   edaphic_vars: ["swvl1", "swvl2", "stl1", "stl2"] # Edaphic variables
   atmos_vars: ["z", "t", "u", "v", "q"]  # Atmospheric variables
-  climate_vars: ["smlt", "tp", "csfr", "avg_sdswrf", "avg_snswrf", "avg_snlwrf", 
+  climate_vars: ["smlt", "tp", "csfr", "avg_sdswrf", "avg_snswrf", "avg_snlwrf",
                   "avg_tprate", "avg_sdswrfcs", "sd", "t2m", "d2m"] # Climate variables
   species_vars: ["1340361", "1340503", "1536449", "1898286", "1920506", "2430567",
                        "2431885", "2433433", "2434779", "2435240", "2435261", "2437394",
@@ -33,7 +33,7 @@ data:
   data_path: /projects/prjs1134/data/projects/biodt/storage/final_dataset_monthly/train
   test_data_path: /projects/prjs1134/data/projects/biodt/storage/final_dataset_monthly/test
   land_mask_path: batch_statistics/europe_Land_2020_grid.pkl
-  
+
   scaling:
     enabled: False
     stats_path: /projects/prjs1134/data/projects/biodt/storage/monthly_batches/statistics/monthly_batches_stats_splitted_channels.json
@@ -74,7 +74,7 @@ evaluation:
   test_device: "cuda:0"
 
 finetune:
-  rollout_steps: 2
+  rollout_steps: 1
   epochs: 1
   batch_size: 1
   eval_every: 200
@@ -86,10 +86,10 @@ finetune:
   prediction: False
   peft_mode: "all"
   mode: "short" # weekly # monthly
-  rank: 8 # LoRA | 256 VeRA
+  rank: 8 #8 LoRA | 256 VeRA
   peft_dropout: 0.0
-  use_lora: False
-  use_vera: True
+  use_lora: True
+  use_vera: False
   lora_alpha: 8
   d_initial: 0.1
 
@@ -117,4 +117,4 @@ model_swin_backbone:
     drop_rate: 0.0
     attn_drop_rate: 0.0
     drop_path_rate: 0.1
-    use_lora: False
+    use_lora: True

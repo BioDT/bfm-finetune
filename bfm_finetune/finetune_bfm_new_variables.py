@@ -5,6 +5,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+from bfm_model.bfm.rollout_finetuning import BFM_Forecastinglighting as BFM_forecast
 from bfm_model.bfm.test_lighting import BFM_lighting
 from bfm_model.bfm.train_lighting import BFM_lighting as BFM_lighting_t
 from hydra import compose, initialize
@@ -48,11 +49,11 @@ bfm_config_path = str(bfm_config_path.relative_to(cwd))
 bfm_config_path = f"../bfm-model/bfm_model/bfm/configs"
 print(bfm_config_path)
 with initialize(version_base=None, config_path=bfm_config_path, job_name="test_app"):
-    bfm_cfg = compose(config_name="train_config.yaml")
+    cfg = compose(config_name="train_config.yaml")
 
 swin_params = {}
-if bfm_cfg.model.backbone == "swin":
-    selected_swin_config = bfm_cfg.model_swin_backbone[bfm_cfg.model.swin_backbone_size]
+if cfg.model.backbone == "swin":
+    selected_swin_config = cfg.model_swin_backbone[cfg.model.swin_backbone_size]
     swin_params = {
         "swin_encoder_depths": tuple(selected_swin_config.encoder_depths),
         "swin_encoder_num_heads": tuple(selected_swin_config.encoder_num_heads),
@@ -69,33 +70,49 @@ if bfm_cfg.model.backbone == "swin":
 
 # BFM args
 bfm_args = dict(
-    surface_vars=(bfm_cfg.model.surface_vars),
-    edaphic_vars=(bfm_cfg.model.edaphic_vars),
-    atmos_vars=(bfm_cfg.model.atmos_vars),
-    climate_vars=(bfm_cfg.model.climate_vars),
-    species_vars=(bfm_cfg.model.species_vars),
-    vegetation_vars=(bfm_cfg.model.vegetation_vars),
-    land_vars=(bfm_cfg.model.land_vars),
-    agriculture_vars=(bfm_cfg.model.agriculture_vars),
-    forest_vars=(bfm_cfg.model.forest_vars),
-    redlist_vars=(bfm_cfg.model.redlist_vars),
-    misc_vars=(bfm_cfg.model.misc_vars),
-    atmos_levels=bfm_cfg.data.atmos_levels,
-    species_num=bfm_cfg.data.species_number,
-    H=bfm_cfg.model.H,
-    W=bfm_cfg.model.W,
-    num_latent_tokens=bfm_cfg.model.num_latent_tokens,
-    backbone_type=bfm_cfg.model.backbone,
-    patch_size=bfm_cfg.model.patch_size,
-    embed_dim=bfm_cfg.model.embed_dim,
-    num_heads=bfm_cfg.model.num_heads,
-    head_dim=bfm_cfg.model.head_dim,
-    depth=bfm_cfg.model.depth,
-    batch_size=bfm_cfg.evaluation.batch_size,
+    surface_vars=(cfg.model.surface_vars),
+    edaphic_vars=(cfg.model.edaphic_vars),
+    atmos_vars=(cfg.model.atmos_vars),
+    climate_vars=(cfg.model.climate_vars),
+    species_vars=(cfg.model.species_vars),
+    vegetation_vars=(cfg.model.vegetation_vars),
+    land_vars=(cfg.model.land_vars),
+    agriculture_vars=(cfg.model.agriculture_vars),
+    forest_vars=(cfg.model.forest_vars),
+    redlist_vars=(cfg.model.redlist_vars),
+    misc_vars=(cfg.model.misc_vars),
+    atmos_levels=cfg.data.atmos_levels,
+    species_num=cfg.data.species_number,
+    H=cfg.model.H,
+    W=cfg.model.W,
+    num_latent_tokens=cfg.model.num_latent_tokens,
+    backbone_type=cfg.model.backbone,
+    patch_size=cfg.model.patch_size,
+    embed_dim=cfg.model.embed_dim,
+    num_heads=cfg.model.num_heads,
+    head_dim=cfg.model.head_dim,
+    depth=cfg.model.depth,
+    learning_rate=cfg.finetune.lr,
+    weight_decay=cfg.finetune.wd,
+    batch_size=cfg.finetune.batch_size,
+    td_learning=cfg.finetune.td_learning,
+    ground_truth_dataset=None,
+    strict=False,  # False if loading from a pre-trained with PEFT checkpoint
+    peft_r=cfg.finetune.rank,
+    lora_alpha=cfg.finetune.lora_alpha,
+    d_initial=cfg.finetune.d_initial,
+    peft_dropout=cfg.finetune.peft_dropout,
+    peft_steps=cfg.finetune.rollout_steps,
+    peft_mode=cfg.finetune.peft_mode,
+    use_lora=cfg.finetune.use_lora,
+    use_vera=cfg.finetune.use_vera,
+    rollout_steps=cfg.finetune.rollout_steps,
+    # lora_steps=cfg.finetune.rollout_steps, # 1 month
+    # lora_mode=cfg.finetune.lora_mode, # every step + layers #single
     **swin_params,
 )
 
-base_model = BFM_lighting.load_from_checkpoint(
+base_model = BFM_forecast.load_from_checkpoint(
     checkpoint_path=checkpoint_file, **bfm_args
 )
 # model = BFM_lighting_t.load_from_checkpoint(
@@ -126,14 +143,14 @@ num_epochs = finetune_cfg.training.epochs
 
 # TODO
 # output_dir = HydraConfig.get().runtime.output_dir
-output_dir = "outputs_bfm_finetune"
+output_dir = "outputs_bfm_finetune_64400"
 
 # THE FOLLOWING IS COPIED FROM finetune_new_variables.py
 
 optimizer = torch.optim.AdamW(
     params_to_optimize,
     lr=finetune_cfg.training.lr,
-    weight_decay=0.01,
+    weight_decay=0.0001,
     betas=(0.9, 0.95),
     eps=1e-8,
 )
@@ -194,7 +211,7 @@ train_dataloader = DataLoader(
 # TODO Make it distinct
 val_dataloader = DataLoader(
     val_dataset,
-    batch_size=8,
+    batch_size=1,
     shuffle=False,
     collate_fn=custom_collate_fn,
     num_workers=finetune_cfg.dataset.num_workers,
@@ -206,8 +223,10 @@ val_loss = 1_000_000
 # mlflow.set_experiment("BFM_Finetune")
 
 plots_dir = Path(output_dir) / "plots"
-if not os.path.exists(plots_dir):
-    os.makedirs(plots_dir)
+predictions_dir = Path(output_dir) / "predictions"
+if not os.path.exists(plots_dir) or not os.path.exists(predictions_dir):
+    os.makedirs(plots_dir, exist_ok=True)
+    os.makedirs(predictions_dir, exist_ok=True)
 
 # with mlflow.start_run():
 #     mlflow.log_param("num_epochs", cfg.training.epochs)
@@ -241,6 +260,8 @@ for sample in val_dataloader:
     unnormalized_preds = val_dataset.scale_species_distribution(
         prediction.clone(), unnormalize=True
     )
+    save_path = predictions_dir / "finetune_predictions.pt"
+    torch.save(unnormalized_preds, save_path)
     plot_eval(
         batch=batch,
         # prediction_species=prediction,
