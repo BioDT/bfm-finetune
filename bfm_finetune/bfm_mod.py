@@ -12,6 +12,8 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from torch.utils.checkpoint import checkpoint
 
+from bfm_finetune.aurora_mod import TemporalSpatialDecoder, TemporalSpatialEncoder
+
 
 def freeze_except_lora(model):
     """
@@ -30,7 +32,7 @@ def freeze_except_lora(model):
     return trainable
 
 
-class TemporalSpatialEncoder(nn.Module):
+class TemporalSpatialEncoder_64k(nn.Module):
     """
     Input (x) : (B, 2, 500, 160, 280)
     Output (tokens) : (B, 64400, 256)
@@ -56,7 +58,7 @@ class TemporalSpatialEncoder(nn.Module):
         return x.flatten(2).transpose(1, 2)
 
 
-class TemporalSpatialDecoder(nn.Module):
+class TemporalSpatialDecoder_64k(nn.Module):
     """
     Input (tokens) : (B, 64400, 256)
     Output (y) : (B, 1, 500, 160, 280)
@@ -380,6 +382,105 @@ class LightSegFormerHead1(nn.Module):
         return y.unsqueeze(1)  # (B,1,500,160,280)
 
 
+class SE(nn.Module):
+    def __init__(self, ch, r=8):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(ch, ch // r, 1),
+            nn.GELU(),
+            nn.Conv2d(ch // r, ch, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        return x * self.fc(x)
+
+
+class DWSE(nn.Module):
+    def __init__(self, ch):
+        super().__init__()
+        self.dw = nn.Conv2d(ch, ch, 3, padding=1, groups=ch, bias=False)
+        self.pw = nn.Conv2d(ch, ch, 1, bias=False)
+        self.se = SE(ch)
+        self.act = nn.GELU()
+        self.norm = GN(ch)
+
+    def forward(self, x):
+        y = self.pw(self.act(self.dw(x)))
+        return self.norm(self.se(y) + x)
+
+
+# ---------- Encoder V3 -------------------------------------------------------
+class TemporalSpatialEncoderV3(nn.Module):
+    """
+    In :  (B, 2, 500, 160, 280)  *or*  (B, 500, 160, 280)
+    Out:  (B, 48 800, 256)
+    """
+
+    def __init__(
+        self,
+        n_species: int = 500,
+        embed_dim: int = 256,
+        grid_hw: Tuple[int, int] = (160, 305),
+    ):  # 160*305 = 48 800
+        super().__init__()
+        self.H, self.W = grid_hw
+        self.stem = nn.Conv2d(n_species * 2, 256, 1, bias=False)  # expect T merged
+        self.block = nn.Sequential(DWSE(256), DWSE(256))
+        self.proj = nn.Conv2d(256, embed_dim, 1, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # merge time dim if present → (B,1000,160,280)
+        if x.ndim == 5:
+            B, T, C, H, W = x.shape
+            x = x.reshape(
+                B, T * C, H, W
+            )  # merge time dim (✔)  :contentReference[oaicite:1]{index=1}
+        elif x.ndim == 4:
+            pass
+        else:
+            raise ValueError("Input must be 4-D or 5-D tensor.")
+
+        x = self.block(self.stem(x))  # (B,256,160,280)
+        x = F.interpolate(x, size=(self.H, self.W), mode="nearest")
+        x = self.proj(x)  # (B,256,160,305)
+        return x.flatten(2).transpose(1, 2)  # (B,48 800,256)
+
+
+# ---------- Decoder V3 -------------------------------------------------------
+class TemporalSpatialDecoderV3(nn.Module):
+    """
+    tokens : (B, 48 800, 256) ➜ y : (B,1,500,160,280)
+    """
+
+    def __init__(
+        self,
+        n_species=500,
+        embed_dim=256,
+        grid_hw: Tuple[int, int] = (160, 305),
+        target_hw: Tuple[int, int] = (160, 280),
+    ):
+        super().__init__()
+        self.H, self.W = grid_hw
+        self.tH, self.tW = target_hw
+        self.path = nn.Sequential(DWSE(embed_dim), DWSE(embed_dim), DWSE(embed_dim))
+        self.head = nn.Sequential(
+            nn.Conv2d(embed_dim, n_species, 1, bias=False), nn.Softplus()
+        )
+
+    def forward(self, tok):
+        B, L, E = tok.shape
+        assert L == self.H * self.W, "token count mismatch"
+        x = tok.transpose(1, 2).reshape(B, E, self.H, self.W)  # (B,256,160,305)
+        x = self.path(x)
+        x = F.interpolate(
+            x, size=(self.tH, self.tW), mode="bilinear", align_corners=False
+        )  # (B,256,160,280)
+        x = self.head(x)  # (B,500,160,280)
+        return x.unsqueeze(1)  # (B,1,500,160,280)
+
+
 class BFMRaw(nn.Module):
     """Same as AuroraRaw but for the BFM"""
 
@@ -405,6 +506,8 @@ class BFMRaw(nn.Module):
         # self.decoder = LightSegFormerHead()
         # self.encoder = ConvFormerEncoder1()
         # self.decoder = LightSegFormerHead1()
+        # self.encoder = TemporalSpatialEncoderV3()
+        # self.decoder = TemporalSpatialDecoderV3()
 
         if freeze_backbone:
             freeze_except_lora(base_model)  #
@@ -420,24 +523,24 @@ class BFMRaw(nn.Module):
         x = batch["species_distribution"]
         encoded = self.encoder(x)
         # 64400
-        patch_shape = (
-            23,
-            70,
-            40,
-        )
-
-        # 48800
         # patch_shape = (
-        #     16,
+        #     23,
         #     70,
         #     40,
         # )
+
+        # 48800
+        patch_shape = (
+            16,
+            70,
+            40,
+        )
         # print("patch_shape", patch_shape)
-        # print(f"Encoded shape: {encoded.shape}")
+        print(f"Encoded shape: {encoded.shape}")
         feats = self.base_model.backbone(
             encoded, lead_time=1, rollout_step=0, patch_shape=patch_shape
         )
-        # print(f"latents shape {feats.shape}")
+        print(f"latents shape {feats.shape}")
         recon = self.decoder(feats)
-        # print(f"decoded shape {recon.shape}")
-        return recon
+        print(f"decoded shape {recon.shape}")
+        return recon, encoded, feats

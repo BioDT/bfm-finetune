@@ -148,15 +148,18 @@ def get_supersampling_target_lat_lon(
         return None
 
 
-def load_checkpoint(model, optimizer, checkpoint_folder):
+def load_checkpoint(
+    model, optimizer, checkpoint_folder, strict=True, load_optim_state=False
+):
     if not checkpoint_folder:
         print("checkpoint_folder not set. Starting from scratch.")
         return 0, float("inf")
     file_path = os.path.join(checkpoint_folder, "best_checkpoint.pth")
     if os.path.isfile(file_path):
         checkpoint = torch.load(file_path)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
+        if load_optim_state:
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_epoch = checkpoint["epoch"] + 1
         best_loss = checkpoint["loss"]
         print(

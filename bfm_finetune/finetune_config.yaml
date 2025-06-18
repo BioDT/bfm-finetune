@@ -1,9 +1,9 @@
 training:
   precision_in: highest
   batch_size: 1
-  epochs: 101
-  lr: 3e-5
-  checkpoint_path:
+  epochs: 500
+  lr: 3e-4
+  checkpoint_path: #TODO Add your checkpoint path here in the folder level e.g. /home/atrantas/bfm-finetune/bfm_finetune/outputs_bfm_finetune_48800/checkpoints/
   val_every: 5
   backend: fsdp #ddp
   gpus: 0 # for multi-gpu runs
