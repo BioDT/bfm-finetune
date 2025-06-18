@@ -131,7 +131,7 @@ with initialize(
     finetune_cfg = compose(config_name="finetune_config.yaml")
 
 num_species = finetune_cfg.dataset.num_species
-model = bfm_mod.BFMRaw(base_model=base_model, n_species=num_species)
+model = bfm_mod.BFMRaw(base_model=base_model, n_species=num_species, mode="train")
 
 device = base_model.device
 model.to(device)
@@ -143,7 +143,7 @@ num_epochs = finetune_cfg.training.epochs
 
 # TODO
 # output_dir = HydraConfig.get().runtime.output_dir
-output_dir = "outputs_bfm_finetune_64400"
+output_dir = f"outputs_bfm_finetune_48800_latest"
 
 # THE FOLLOWING IS COPIED FROM finetune_new_variables.py
 
@@ -169,7 +169,11 @@ def lr_lambda(step):
     return min_lr_ratio + (1 - min_lr_ratio) * cosine
 
 
-scheduler = LambdaLR(optimizer, lr_lambda)
+# scheduler = LambdaLR(optimizer, lr_lambda)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    optimizer, T_max=2000, eta_min=finetune_cfg.training.lr / 10
+)
+
 
 checkpoint_save_path = Path(output_dir) / "checkpoints"
 
