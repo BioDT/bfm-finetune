@@ -489,9 +489,11 @@ class BFMRaw(nn.Module):
         base_model,
         n_species: int = 500,
         freeze_backbone: bool = True,
+        mode: str = "train",
     ) -> None:
         super().__init__()
         self.base_model = base_model
+        self.mode = mode
 
         # enable_swin3d_checkpointing(self.base_model.backbone)
 
@@ -536,11 +538,14 @@ class BFMRaw(nn.Module):
             40,
         )
         # print("patch_shape", patch_shape)
-        print(f"Encoded shape: {encoded.shape}")
+        # print(f"Encoded shape: {encoded.shape}")
         feats = self.base_model.backbone(
             encoded, lead_time=1, rollout_step=0, patch_shape=patch_shape
         )
-        print(f"latents shape {feats.shape}")
+        # print(f"latents shape {feats.shape}")
         recon = self.decoder(feats)
-        print(f"decoded shape {recon.shape}")
-        return recon, encoded, feats
+        # print(f"decoded shape {recon.shape}")
+        if self.mode == "train":
+            return recon
+        else:  # you are doing eval and maybe need the latents
+            return recon, encoded, feats

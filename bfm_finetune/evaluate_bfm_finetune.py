@@ -108,7 +108,7 @@ with initialize(
     finetune_cfg = compose(config_name="finetune_config.yaml")
 
 num_species = finetune_cfg.dataset.num_species
-model = bfm_mod.BFMRaw(base_model=base_model, n_species=num_species)
+model = bfm_mod.BFMRaw(base_model=base_model, n_species=num_species, mode="eval")
 
 device = base_model.device
 model.to(device)
