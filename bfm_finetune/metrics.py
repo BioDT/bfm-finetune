@@ -4,10 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.ndimage
 import torch
-from skimage.metrics import structural_similarity as ssim
 from properscoring import crps_ensemble
+from skimage.metrics import structural_similarity as ssim
+from sklearn.metrics import f1_score
 
 EPS = 1e-8
+
 
 def compute_rmse(pred: torch.Tensor, target: torch.Tensor) -> float:
     """
@@ -247,23 +249,24 @@ def generate_synthetic_data(B=3, T=1, C=1, H=64, W=64, noise_std=0.1, shift=2):
 
 
 # CRPS – Monte‑Carlo version that works for any Poisson λ
-def _sampled_crps_poisson(lam: torch.Tensor,
-                          obs: torch.Tensor,
-                          n_samples: int = 30) -> torch.Tensor:
+def _sampled_crps_poisson(
+    lam: torch.Tensor, obs: torch.Tensor, n_samples: int = 30
+) -> torch.Tensor:
     """
     Draw Monte-Carlo samples from Poisson(λ) and call properscoring.
     Shapes are broadcast automatically; runs on GPU then moves to CPU
     only for the final scoring step to keep memory low.
     """
-    lam = lam.clamp(min=EPS) # avoid negative
+    lam = lam.clamp(min=EPS)  # avoid negative
     obs = obs.clamp(min=0)
 
     # (..., n_samples) synthetic ensemble
     samples = torch.poisson(lam.unsqueeze(-1).expand(*lam.shape, n_samples))
 
-    ens   = samples.reshape(-1, n_samples).cpu().numpy()
+    ens = samples.reshape(-1, n_samples).cpu().numpy()
     obs1d = obs.reshape(-1).cpu().numpy()
     return torch.as_tensor(crps_ensemble(obs1d, ens).mean())
+
 
 def crps_(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
@@ -272,12 +275,13 @@ def crps_(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
       - deterministic mean λ  [B, S, H, W]   -> Monte-Carlo CRPS
       - ensemble samples      [B, S, H, W, E] -> exact ensemble CRPS
     """
-    if pred.ndim == 5: #for ensamble
-        ens   = pred.permute(4, 0, 1, 2, 3).reshape(pred.shape[-1], -1).cpu()
-        obs   = target.reshape(-1).cpu()
+    if pred.ndim == 5:  # for ensamble
+        ens = pred.permute(4, 0, 1, 2, 3).reshape(pred.shape[-1], -1).cpu()
+        obs = target.reshape(-1).cpu()
         return torch.as_tensor(crps_ensemble(obs.numpy(), ens.numpy()).mean())
-    else: # draw synthetic ensemble
+    else:  # draw synthetic ensemble
         return _sampled_crps_poisson(pred, target)
+
 
 def crps(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
@@ -292,26 +296,27 @@ def _sanitize(t: torch.Tensor) -> torch.Tensor:
     t = torch.nan_to_num(t, nan=0.0, neginf=0.0, posinf=0.0)
     return t.clamp(min=EPS)
 
+
 def poisson_deviance(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     pred, target = _sanitize(pred), _sanitize(target)
     term = target * torch.log((target + EPS) / pred) - (target - pred)
     return 2.0 * torch.mean(term)
+
 
 def explained_deviance(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     dev_model = poisson_deviance(pred, target)
     # “null” model = one global mean rate over the whole spatiotemporal cube
     # TODO Adapt the global model to something meaningful
     mean_rate = torch.mean(_sanitize(target))
-    dev_null  = poisson_deviance(mean_rate.expand_as(target), target)
+    dev_null = poisson_deviance(mean_rate.expand_as(target), target)
     return 1.0 - dev_model / (dev_null + EPS)
 
-# True‑Skill Statistic 
-def tss(pred: torch.Tensor,
-        target: torch.Tensor,
-        threshold: int = 1) -> torch.Tensor:
-    
-    pred_bin = (_sanitize(pred) >= threshold)
-    targ_bin = (_sanitize(target) >= threshold)
+
+# True‑Skill Statistic
+def tss(pred: torch.Tensor, target: torch.Tensor, threshold: int = 1) -> torch.Tensor:
+
+    pred_bin = _sanitize(pred) >= threshold
+    targ_bin = _sanitize(target) >= threshold
     tp = (pred_bin & targ_bin).sum()
     tn = (~pred_bin & ~targ_bin).sum()
     fp = (pred_bin & ~targ_bin).sum()
@@ -392,3 +397,96 @@ def make_test():
 
     print("Plotting metrics...")
     plot_metrics(dummy_metrics)
+
+
+# Define a function to compute F1 score for your predictions
+def compute_f1(pred, target, threshold=0.5):
+    """
+    Compute F1 score for species presence/absence prediction.
+
+    Args:
+        pred: Tensor of predictions [B, 1, C, H, W]
+        target: Tensor of ground truth [B, 1, C, H, W]
+        threshold: Threshold to convert predictions to binary (default: 0.5)
+
+        Returns:
+        F1 score as a float
+    """
+    # Convert tensors to numpy arrays
+    pred_np = pred.squeeze(1).detach().cpu().numpy()  # shape: [B, C, H, W]
+    target_np = target.squeeze(1).detach().cpu().numpy()  # shape: [B, C, H, W]
+
+    # Flatten all dimensions (sample, channel, height, width)
+    pred_flat = pred_np.flatten()
+    target_flat = target_np.flatten()
+
+    # Convert predictions to binary using threshold
+    pred_binary = (pred_flat > threshold).astype(np.int32)
+    target_binary = (target_flat > 0).astype(np.int32)
+
+    # Calculate F1 score
+    f1 = f1_score(target_binary, pred_binary, zero_division=0)
+    return f1
+
+
+def compute_geolifeclef_f1(pred, target, threshold=0.5):
+    """
+    Compute F1 score using the formula:
+    F1 = (1/N) ∑ TP_i / (TP_i + (FP_i + FN_i)/2)
+
+    where:
+    - TP_i = number of correctly predicted species
+    - FP_i = number of species predicted but not observed
+    - FN_i = number of species not predicted but present
+
+    Args:
+        pred: Tensor of predictions [B, 1, C, H, W]
+        target: Tensor of ground truth [B, 1, C, H, W]
+        threshold: Threshold to convert predictions to binary (default: 0.5)
+
+    Returns:
+        Custom F1 score as a float
+    """
+    # Convert tensors to numpy arrays
+    pred_np = pred.squeeze(1).detach().cpu().numpy()  # shape: [B, C, H, W]
+    target_np = target.squeeze(1).detach().cpu().numpy()  # shape: [B, C, H, W]
+
+    B, C, H, W = pred_np.shape
+    f1_scores = []
+
+    # Process each sample in the batch
+    for b in range(B):
+        sample_f1_scores = []
+
+        # For each location (H, W coordinates)
+        for h in range(H):
+            for w in range(W):
+                # Get predicted and target species at this location
+                pred_species = pred_np[b, :, h, w]
+                target_species = target_np[b, :, h, w]
+
+                # Binarize predictions based on threshold
+                pred_binary = (pred_species > threshold).astype(int)
+                target_binary = (target_species > 0).astype(int)
+
+                # Calculate TP, FP, FN
+                TP = np.sum(pred_binary & target_binary)
+                FP = np.sum(pred_binary & ~target_binary)
+                FN = np.sum(~pred_binary & target_binary)
+
+                # Calculate F1 score for this location
+                if TP + FP + FN == 0:  # No species predicted or observed
+                    location_f1 = (
+                        1.0  # Perfect score when both pred and target are empty
+                    )
+                else:
+                    location_f1 = TP / (TP + (FP + FN) / 2) if TP > 0 else 0
+
+                sample_f1_scores.append(location_f1)
+
+        # Average F1 over all locations in this sample
+        if sample_f1_scores:
+            f1_scores.append(np.mean(sample_f1_scores))
+
+    # Return average F1 over all samples
+    return np.mean(f1_scores) if f1_scores else 0.0

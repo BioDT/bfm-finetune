@@ -9,10 +9,12 @@ results/
 __pycache__/
 *.py[cod]
 *$py.class
-
+outputs_bfm_finetune_48800/
+outputs_bfm_finetune_64400/
 # C extensions
 *.so
 
+bfm-model/
 # Distribution / packaging
 .Python
 build/

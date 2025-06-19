@@ -143,7 +143,7 @@ num_epochs = finetune_cfg.training.epochs
 
 # TODO
 # output_dir = HydraConfig.get().runtime.output_dir
-output_dir = f"outputs_bfm_finetune_48800_latest"
+output_dir = f"outputs_bfm_finetune_48800"
 
 # THE FOLLOWING IS COPIED FROM finetune_new_variables.py
 

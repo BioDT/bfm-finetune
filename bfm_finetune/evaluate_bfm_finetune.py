@@ -1,11 +1,14 @@
 import os
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 from bfm_model.bfm.rollout_finetuning import BFM_Forecastinglighting as BFM_forecast
 from hydra import compose, initialize
 from omegaconf import OmegaConf
+from sklearn.decomposition import PCA
 from torch.utils.data import DataLoader
 
 from bfm_finetune import bfm_mod
@@ -18,6 +21,7 @@ from bfm_finetune.finetune_new_variables import (
     train_epoch,
     validate_epoch,
 )
+from bfm_finetune.metrics import compute_geolifeclef_f1, compute_rmse
 from bfm_finetune.paths import REPO_FOLDER, STORAGE_DIR
 from bfm_finetune.utils import (
     get_lat_lon_ranges,
@@ -143,7 +147,12 @@ _, best_loss = load_checkpoint(
 )
 
 # final evaluate
-for sample in val_dataloader:
+all_backbones = []
+sample_ids = []  # To keep track of which sample each backbone comes from
+all_rmse = []
+all_f1 = []
+
+for i, sample in enumerate(val_dataloader):
     batch = sample["batch"]  # .to(device)
     batch["species_distribution"] = batch["species_distribution"].to(device)
     target = sample["target"]
@@ -152,15 +161,94 @@ for sample in val_dataloader:
     unnormalized_preds = val_dataset.scale_species_distribution(
         prediction.clone(), unnormalize=True
     )
-    # TODO These are the backbone's latents! For the test sample
-    print(backbone)
-    # save_path = predictions_dir / "finetune_predictions.pt"
-    # torch.save(unnormalized_preds, save_path)
-    # plot_eval(
-    #     batch=batch,
-    #     # prediction_species=prediction,
-    #     prediction_species=unnormalized_preds,
-    #     out_dir=plots_dir,
-    #     save=True,
-    # )
+
+    # Compute metrics
+    # Move target to device for computation
+    target_tensor = target.to(device)
+
+    # Calculate RMSE
+    rmse = compute_rmse(prediction, target_tensor).item()
+    all_rmse.append(rmse)
+
+    # Calculate custom F1 score
+    f1 = compute_geolifeclef_f1(prediction.cpu(), target.cpu())
+    all_f1.append(f1)
+
+    print(f"Sample {i} - RMSE: {rmse:.4f}, Custom F1: {f1:.4f}")
+
+    # Store the backbone features
+    all_backbones.append(backbone.cpu().numpy())
+    sample_ids.append(i)
+
+    # Print backbone shape
+    print(f"Backbone size: {backbone.shape}")
+
+# Calculate and print average metrics over validation set
+avg_rmse = np.mean(all_rmse)
+avg_f1 = np.mean(all_f1)
+print(f"\nValidation Set Metrics:")
+print(f"Average RMSE: {avg_rmse:.4f}")
+print(f"Average GeoLifeCLEF F1: {avg_f1:.4f}")
 print("DONE")
+
+# Run PCA on all collected backbones
+print(f"Collected backbones from {len(all_backbones)} samples")
+
+# Reshape and concatenate all backbones
+all_backbones_array = np.concatenate(
+    [b.reshape(b.shape[0] * b.shape[1], b.shape[2]) for b in all_backbones], axis=0
+)
+print(f"Combined backbone shape: {all_backbones_array.shape}")
+
+# Apply PCA
+n_components = 6  # Number of principal components to compute
+pca = PCA(n_components=n_components)
+principal_components = pca.fit_transform(all_backbones_array)
+
+# Print explained variance ratio
+explained_variance = pca.explained_variance_ratio_
+cumulative_variance = np.cumsum(explained_variance)
+print("Explained variance ratio by component:", explained_variance)
+print("Cumulative explained variance:", cumulative_variance)
+
+# Create a correlation matrix between the first 6 principal components
+corr_matrix = np.corrcoef(principal_components, rowvar=False)
+
+# Plot the correlation matrix as a heatmap
+plt.figure(figsize=(10, 8))
+cmap = plt.cm.viridis
+mask = np.zeros_like(corr_matrix)
+mask[np.triu_indices_from(mask)] = (
+    True  # Optional: mask the upper triangle for cleaner viz
+)
+
+im = plt.imshow(corr_matrix, cmap=cmap, vmin=-1, vmax=1)
+plt.colorbar(im, label="Correlation")
+# plt.title('Correlation Matrix of First 6 Principal Components')
+
+# Add text annotations
+for i in range(n_components):
+    for j in range(n_components):
+        text = plt.text(
+            j, i, f"{corr_matrix[i, j]:.2f}", ha="center", va="center", color="black"
+        )
+
+# Set tick labels
+tick_labels = [f"PC{i+1}\n({explained_variance[i]:.2%})" for i in range(n_components)]
+plt.xticks(range(n_components), tick_labels, rotation=45)
+plt.yticks(range(n_components), tick_labels)
+
+plt.tight_layout()
+plt.savefig("pca_correlation_matrix.png", dpi=300)
+plt.close()
+
+# Save PCA results
+np.savez(
+    "backbone_pca_results.npz",
+    principal_components=principal_components,
+    explained_variance=explained_variance,
+    pca_components=pca.components_,
+    correlation_matrix=corr_matrix,
+)
+
+print("PCA analysis completed and saved")
