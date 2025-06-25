@@ -2,6 +2,7 @@
 	path = gravity-wave-finetuning
 	url = git@github.com:BioDT/gravity-wave-finetuning.git
 	branch = feature/module
+
 [submodule "bfm-model"]
 	path = bfm-model
 	url = git@github.com:BioDT/bfm-model.git

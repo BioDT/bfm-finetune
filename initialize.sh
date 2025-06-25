@@ -26,7 +26,12 @@ else
 fi
 
 # init all submodules
-git submodule update --init --recursive
+# git submodule update --init --recursive
+# git submodule update --recursive --remote
+# git pull --recurse-submodules
+git submodule sync
+git submodule init
+git submodule update --remote --checkout --recursive
 
 # install poetry
 source $VENV_PATH/bin/activate
