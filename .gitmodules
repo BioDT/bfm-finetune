@@ -5,3 +5,4 @@
 [submodule "bfm-model"]
 	path = bfm-model
 	url = git@github.com:BioDT/bfm-model.git
+	branch = feature/pytorch-upgrade
