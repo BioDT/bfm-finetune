@@ -11,8 +11,7 @@ from bfm_model.bfm.dataloader_monthly import (
     batch_to_device,
     custom_collate,
 )
-from bfm_model.bfm.test_lighting import BFM_lighting
-from bfm_model.bfm.train_lighting import BFM_lighting as BFM_lighting_t
+from bfm_model.bfm.model import BFM
 from hydra import compose, initialize
 from omegaconf import OmegaConf
 from torch.optim.lr_scheduler import LambdaLR
@@ -36,7 +35,9 @@ from bfm_finetune.utils import (
     load_checkpoint,
 )
 
-checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+# checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+# has _latent_parameter_list
+checkpoint_file = STORAGE_DIR / "weights" / "epoch=00-val_loss=0.32124.ckpt"
 if not os.path.exists(checkpoint_file):
     raise ValueError(f"checkpoint not found: {checkpoint_file}")
 
@@ -62,7 +63,6 @@ if bfm_cfg.model.backbone == "swin":
         "swin_drop_rate": selected_swin_config.drop_rate,
         "swin_attn_drop_rate": selected_swin_config.attn_drop_rate,
         "swin_drop_path_rate": selected_swin_config.drop_path_rate,
-        "swin_use_lora": selected_swin_config.use_lora,
     }
 
 # BFM args
@@ -94,7 +94,7 @@ bfm_args = dict(
 )
 
 
-class BFMWithLatent(BFM_lighting):
+class BFMWithLatent(BFM):
     # overridden to return latents
     def forward(self, batch, lead_time=2, batch_size: int = 1):
         encoded = self.encoder(batch, lead_time, batch_size)
@@ -138,8 +138,8 @@ class BFMWithLatent(BFM_lighting):
 
 model = BFMWithLatent.load_from_checkpoint(checkpoint_path=checkpoint_file, **bfm_args)
 
-# Batch path (overriden) # bfm_cfg.evaluation.test_data
-bfm_cfg.evaluation.test_data = str(STORAGE_DIR / "monthly_batches" / "batches")
+# Batch path (overriden) # bfm_cfg.data.test_data_path
+bfm_cfg.data.test_data_path = str(STORAGE_DIR / "monthly_batches" / "batches")
 bfm_cfg.data.scaling.stats_path = str(
     STORAGE_DIR
     / "monthly_batches"
@@ -148,14 +148,14 @@ bfm_cfg.data.scaling.stats_path = str(
 )
 
 test_dataset = LargeClimateDataset(
-    data_dir=bfm_cfg.evaluation.test_data,
+    data_dir=bfm_cfg.data.test_data_path,
     scaling_settings=bfm_cfg.data.scaling,
     num_species=bfm_cfg.data.species_number,
     atmos_levels=bfm_cfg.data.atmos_levels,
     model_patch_size=bfm_cfg.model.patch_size,
     max_files=3,
 )
-print("Reading test data from :", bfm_cfg.evaluation.test_data)
+print("Reading test data from :", bfm_cfg.data.test_data_path)
 test_dataloader = DataLoader(
     test_dataset,
     batch_size=bfm_cfg.evaluation.batch_size,

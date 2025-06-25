@@ -5,9 +5,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from bfm_model.bfm.rollout_finetuning import BFM_Forecastinglighting as BFM_forecast
-from bfm_model.bfm.test_lighting import BFM_lighting
-from bfm_model.bfm.train_lighting import BFM_lighting as BFM_lighting_t
+from bfm_model.bfm.model import BFM, BFMRollout
 from hydra import compose, initialize
 from omegaconf import OmegaConf
 from torch.optim.lr_scheduler import LambdaLR
@@ -31,7 +29,9 @@ from bfm_finetune.utils import (
     load_checkpoint,
 )
 
-checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+# checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+# has _latent_parameter_list
+checkpoint_file = STORAGE_DIR / "weights" / "epoch=00-val_loss=0.32124.ckpt"
 
 if not os.path.exists(checkpoint_file):
     raise ValueError(f"checkpoint not found: {checkpoint_file}")
@@ -65,7 +65,6 @@ if cfg.model.backbone == "swin":
         "swin_drop_rate": selected_swin_config.drop_rate,
         "swin_attn_drop_rate": selected_swin_config.attn_drop_rate,
         "swin_drop_path_rate": selected_swin_config.drop_path_rate,
-        "swin_use_lora": selected_swin_config.use_lora,
     }
 
 # BFM args
@@ -96,7 +95,7 @@ bfm_args = dict(
     weight_decay=cfg.finetune.wd,
     batch_size=cfg.finetune.batch_size,
     td_learning=cfg.finetune.td_learning,
-    ground_truth_dataset=None,
+    # ground_truth_dataset=None,
     strict=False,  # False if loading from a pre-trained with PEFT checkpoint
     peft_r=cfg.finetune.rank,
     lora_alpha=cfg.finetune.lora_alpha,
@@ -112,10 +111,10 @@ bfm_args = dict(
     **swin_params,
 )
 
-base_model = BFM_forecast.load_from_checkpoint(
+base_model = BFMRollout.load_from_checkpoint(
     checkpoint_path=checkpoint_file, **bfm_args
 )
-# model = BFM_lighting_t.load_from_checkpoint(
+# model = BFM.load_from_checkpoint(
 #     checkpoint_path=checkpoint_file,
 #     **bfm_args,
 # )
