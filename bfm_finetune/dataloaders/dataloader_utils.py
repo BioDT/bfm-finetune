@@ -5,6 +5,7 @@ import torch
 from aurora.batch import Batch, Metadata
 from torch.utils.data import DataLoader, Dataset, default_collate
 
+from typing import Dict, Callable, Literal, Tuple
 
 # Custom collate function to merge a list of Batch objects.
 def collate_batches(batch_list):
@@ -106,3 +107,89 @@ def manage_negative_lon_dict(
             )  # min_value is negative
         pass
     return batch
+
+
+def _apply_lastdim(var_dict: Dict[str, torch.Tensor],
+                   fn: Callable[[torch.Tensor], torch.Tensor],
+                   size: int) -> None:
+    """Apply fn to every tensor whose last dimension == size."""
+    for k, t in var_dict.items():
+        if t.ndim and t.shape[-1] == size:
+            var_dict[k] = fn(t)
+
+def _apply_latdim(var_dict: Dict[str, torch.Tensor],
+                  fn: Callable[[torch.Tensor], torch.Tensor],
+                  size: int) -> None:
+    """Apply fn to every tensor whose second-to-last dim == size."""
+    for k, t in var_dict.items():
+        if t.ndim >= 2 and t.shape[-2] == size:
+            var_dict[k] = fn(t)
+
+def manage_negative_lon_aurora_batch(
+    surf_vars: Dict[str, torch.Tensor],
+    static_vars: Dict[str, torch.Tensor],
+    atmos_vars: Dict[str, torch.Tensor],
+    lat: torch.Tensor,
+    lon: torch.Tensor,
+    mode: Literal["roll", "exclude", "translate", "ignore"] = "ignore",
+    lon_precision: int = 4,
+):
+    """
+    Fix longitude and latitude axes **in-place** for three variable dicts.
+
+    Returns the same objects so the caller can simply re-assign.
+
+    Longitude modes are identical to the GeoLifeclef version.
+    Latitude is always forced to strictly decreasing order.
+
+    Parameters
+    ----------
+    surf_vars / static_vars / atmos_vars : dict[str, Tensor]
+        Tensors shaped (...,  H, W) where H matches lat and W matches lon.
+    lat : 1-D Tensor (H) - will be flipped if increasing.
+    lon : 1-D Tensor(W) - will be modified according to mode.
+    lon_precision : int - number of decimals kept in lon after rounding.
+    """
+    # ensure latitude strictly decreasing
+    if lat[0] < lat[-1]: # increasing -> flip
+        lat = torch.flip(lat, dims=[0])
+        flip_fn = lambda t: torch.flip(t, dims=[-2])
+        for g in (surf_vars, static_vars, atmos_vars):
+            _apply_latdim(g, flip_fn, lat.shape[0])
+
+    if mode != "ignore":
+        lon_np   = lon.cpu().numpy()
+        neg_idx  = np.where(lon_np < 0)[0]
+        if neg_idx.size:
+            max_neg = int(neg_idx.max())
+            W       = lon.shape[-1]
+            groups  = (surf_vars, static_vars, atmos_vars)
+
+            if mode == "exclude":  # drop western hemi
+                keep = slice(max_neg + 1, None)
+                lon  = lon[keep]
+                cut  = lambda t: t[..., keep]
+                for g in groups: _apply_lastdim(g, cut, W)
+
+            elif mode == "roll": # 0-360 ° grid
+                lon360 = lon_np.copy()
+                lon360[:max_neg+1] += 360 
+                shift = -(max_neg + 1)
+                lon  = torch.as_tensor(np.roll(lon360, shift),
+                                                 dtype=lon.dtype, device=lon.device)
+                roll_fn = lambda t: torch.roll(t, shifts=shift, dims=-1)
+                for g in groups: _apply_lastdim(g, roll_fn, W)
+
+            elif mode == "translate":
+                min_val = lon.min()
+                if min_val < 0:
+                    lon = lon - min_val  # keep order, just shift baseline
+
+            else:
+                raise ValueError(f"unknown mode {mode}")
+
+    lon = torch.round(lon * (10 ** lon_precision)) / (10 ** lon_precision)
+    torch.set_printoptions(sci_mode=False, precision=lon_precision,
+                           linewidth=200)           
+
+    return surf_vars, static_vars, atmos_vars, lat, lon
