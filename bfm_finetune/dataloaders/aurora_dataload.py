@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Literal, Union
 import torch
 from omegaconf.dictconfig import DictConfig
 from torch.utils.data import DataLoader, Dataset, default_collate
-from dataloaders.dataloader_utils import manage_negative_lon_aurora_batch
+from dataloaders.dataloader_utils import fix_aurora_coords
 
 from bfm_model.bfm.scaler import (
     _rescale_recursive,
@@ -150,6 +150,7 @@ class LargeClimateDataset(Dataset):
 
         latitudes = data["batch_metadata"]["latitudes"]
         longitudes = data["batch_metadata"]["longitudes"]
+        # print("ORIGINAL LAT AND LONG:", latitudes, longitudes)
         timestamps = data["batch_metadata"]["timestamp"]
         pressure_levels = data["batch_metadata"]["pressure_levels"]
         # Determine original spatial dimensions from metadata lists
@@ -174,11 +175,10 @@ class LargeClimateDataset(Dataset):
         latitude_var = torch.tensor(latitudes[:new_H])
         longitude_var = torch.tensor(longitudes[:new_W])
 
-        atmospheric_vars = extract_atmospheric_levels(atmospheric_vars, pressure_levels, self.atmos_levels, level_dim=1)
+        atmos_vars = extract_atmospheric_levels(atmospheric_vars, pressure_levels, self.atmos_levels, level_dim=1)
 
-        surf_vars, static_vars, atmos_vars, lat, lon = manage_negative_lon_aurora_batch(
-            surf_vars=surf_vars, static_vars=static_vars, atmos_vars=atmospheric_vars,
-            lat=latitude_var, lon=longitude_var, mode="roll")
+        lat, lon = fix_aurora_coords(latitude_var, longitude_var, precision=2)
+        # print("TRANSLATED LAT AND LONG:", lat, lon)
 
         time_tupe = tuple(datetime.fromisoformat(t) for t in timestamps)
         # print(lat, lon)

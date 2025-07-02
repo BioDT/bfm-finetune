@@ -109,87 +109,42 @@ def manage_negative_lon_dict(
     return batch
 
 
-def _apply_lastdim(var_dict: Dict[str, torch.Tensor],
-                   fn: Callable[[torch.Tensor], torch.Tensor],
-                   size: int) -> None:
-    """Apply fn to every tensor whose last dimension == size."""
-    for k, t in var_dict.items():
-        if t.ndim and t.shape[-1] == size:
-            var_dict[k] = fn(t)
 
-def _apply_latdim(var_dict: Dict[str, torch.Tensor],
-                  fn: Callable[[torch.Tensor], torch.Tensor],
-                  size: int) -> None:
-    """Apply fn to every tensor whose second-to-last dim == size."""
-    for k, t in var_dict.items():
-        if t.ndim >= 2 and t.shape[-2] == size:
-            var_dict[k] = fn(t)
-
-def manage_negative_lon_aurora_batch(
-    surf_vars: Dict[str, torch.Tensor],
-    static_vars: Dict[str, torch.Tensor],
-    atmos_vars: Dict[str, torch.Tensor],
-    lat: torch.Tensor,
-    lon: torch.Tensor,
-    mode: Literal["roll", "exclude", "translate", "ignore"] = "ignore",
-    lon_precision: int = 4,
-):
+def fix_aurora_coords(lat: torch.Tensor,
+                      lon: torch.Tensor,
+                      precision: int = 2) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Fix longitude and latitude axes **in-place** for three variable dicts.
+    Return lat, lon coordinates that satisfy Aurora's requirements:
 
-    Returns the same objects so the caller can simply re-assign.
+    -lat strictly descending-ordered.
+    -lon strictly ascending-ordered in [0, 360).
 
-    Longitude modes are identical to the GeoLifeclef version.
-    Latitude is always forced to strictly decreasing order.
-
-    Parameters
-    ----------
-    surf_vars / static_vars / atmos_vars : dict[str, Tensor]
-        Tensors shaped (...,  H, W) where H matches lat and W matches lon.
-    lat : 1-D Tensor (H) - will be flipped if increasing.
-    lon : 1-D Tensor(W) - will be modified according to mode.
-    lon_precision : int - number of decimals kept in lon after rounding.
+    The algorithm is deterministic and independent of the
+    incoming order or sign of lon.
     """
-    # ensure latitude strictly decreasing
-    if lat[0] < lat[-1]: # increasing -> flip
-        lat = torch.flip(lat, dims=[0])
-        flip_fn = lambda t: torch.flip(t, dims=[-2])
-        for g in (surf_vars, static_vars, atmos_vars):
-            _apply_latdim(g, flip_fn, lat.shape[0])
+    lat_out = lat.flip(0) if lat[0] < lat[-1] else lat.clone()
+    if not torch.all(lat_out[1:] < lat_out[:-1]):
+        raise ValueError("Latitude still not strictly decreasing after flip.")
 
-    if mode != "ignore":
-        lon_np   = lon.cpu().numpy()
-        neg_idx  = np.where(lon_np < 0)[0]
-        if neg_idx.size:
-            max_neg = int(neg_idx.max())
-            W       = lon.shape[-1]
-            groups  = (surf_vars, static_vars, atmos_vars)
+    lon_out = torch.remainder(lon, 360.0)
 
-            if mode == "exclude":  # drop western hemi
-                keep = slice(max_neg + 1, None)
-                lon  = lon[keep]
-                cut  = lambda t: t[..., keep]
-                for g in groups: _apply_lastdim(g, cut, W)
+    # Drop duplicates & sort ascending
+    lon_out = torch.unique(lon_out, sorted=True)
 
-            elif mode == "roll": # 0-360 ° grid
-                lon360 = lon_np.copy()
-                lon360[:max_neg+1] += 360 
-                shift = -(max_neg + 1)
-                lon  = torch.as_tensor(np.roll(lon360, shift),
-                                                 dtype=lon.dtype, device=lon.device)
-                roll_fn = lambda t: torch.roll(t, shifts=shift, dims=-1)
-                for g in groups: _apply_lastdim(g, roll_fn, W)
+    if lon_out.numel() > 1 and lon_out[0] == 0.0:
+        pass
+    else:
+        # Make it start at 0 by rolling so the largest gap is at the end.
+        diffs = torch.diff(torch.cat([lon_out, lon_out[:1] + 360]))
+        gap_idx = int(torch.argmax(diffs)) + 1
+        lon_out = torch.roll(lon_out, shifts=-gap_idx, dims=0)
 
-            elif mode == "translate":
-                min_val = lon.min()
-                if min_val < 0:
-                    lon = lon - min_val  # keep order, just shift baseline
+    if not torch.all(lon_out[1:] > lon_out[:-1]):
+        raise ValueError("Longitude still not strictly increasing (unexpected).")
+    if not (0.0 <= lon_out.min() and lon_out.max() < 360.0):
+        raise ValueError("Longitude outside [0,360) (unexpected).")
 
-            else:
-                raise ValueError(f"unknown mode {mode}")
-
-    lon = torch.round(lon * (10 ** lon_precision)) / (10 ** lon_precision)
-    torch.set_printoptions(sci_mode=False, precision=lon_precision,
-                           linewidth=200)           
-
-    return surf_vars, static_vars, atmos_vars, lat, lon
+    lon_out = torch.round(lon_out, decimals=precision)
+    lat_out = torch.round(lat_out, decimals=precision)
+    
+    return lat_out, lon_out
