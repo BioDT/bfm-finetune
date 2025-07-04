@@ -1,12 +1,15 @@
+import argparse
+import os
+
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torchmetrics import R2Score, MeanSquaredError
-from bfm_finetune.dataloaders.chelsa.dataloader import LatentCHELSADataset
-import argparse
-import os
-import matplotlib.pyplot as plt
+from torchmetrics import MeanSquaredError, R2Score
 from tqdm import tqdm  # <-- add tqdm import
+
+from bfm_finetune.dataloaders.chelsa.dataloader import LatentCHELSADataset
+
 
 class ClimateRegressor(nn.Module):
     def __init__(self, input_dim, hidden_dim=128, output_dim=2):
@@ -14,13 +17,21 @@ class ClimateRegressor(nn.Module):
         self.model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim)
+            nn.Linear(hidden_dim, output_dim),
         )
 
     def forward(self, x):
         return self.model(x)
 
-def train_model(netcdf_path, batch_size=1, epochs=10, device="cuda", sanity_check=True, save_results=True):
+
+def train_model(
+    netcdf_path,
+    batch_size=1,
+    epochs=10,
+    device="cuda",
+    sanity_check=True,
+    save_results=True,
+):
     dataset = LatentCHELSADataset(netcdf_path)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     input_dim = dataset.input_dim  # <-- input_dim is already an int
@@ -74,7 +85,7 @@ def train_model(netcdf_path, batch_size=1, epochs=10, device="cuda", sanity_chec
         plt.xlabel("True")
         plt.ylabel("Predicted")
         plt.title("Sanity check: True vs. Predicted")
-        plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--')
+        plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], "r--")
         plt.tight_layout()
         plt.savefig("sanity_check_true_vs_pred.png")
         plt.close()
@@ -106,27 +117,45 @@ def train_model(netcdf_path, batch_size=1, epochs=10, device="cuda", sanity_chec
             r2.update(pred, y)
             rmse.update(pred, y)
             total_loss += loss.item()
-            
-            if save_results:
-                #store results to txt file
-                with open("/home/tkhan/bfm-finetune/outputs/chelsa_training_results.txt", "a") as f:
-                    f.write(f"Epoch {epoch+1}, Loss: {loss.item():.4f}, R2: {r2.compute().item():.4f}, RMSE: {rmse.compute().item():.4f}\n")
 
-        print(f"Epoch {epoch+1}: Loss={total_loss/len(dataloader):.4f}, R2={r2.compute():.4f}, RMSE={rmse.compute():.4f}")
+            if save_results:
+                # store results to txt file
+                with open(
+                    "/home/tkhan/bfm-finetune/outputs/chelsa_training_results.txt", "a"
+                ) as f:
+                    f.write(
+                        f"Epoch {epoch+1}, Loss: {loss.item():.4f}, R2: {r2.compute().item():.4f}, RMSE: {rmse.compute().item():.4f}\n"
+                    )
+
+        print(
+            f"Epoch {epoch+1}: Loss={total_loss/len(dataloader):.4f}, R2={r2.compute():.4f}, RMSE={rmse.compute():.4f}"
+        )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--netcdf_path", type=str, required=True)
-    parser.add_argument("--latent_type", type=str, required=False, default="backbone_output", 
-                      choices=["encoder_output", "backbone_output"], 
-                      help="Which latent representation to use for training")
+    parser.add_argument(
+        "--latent_type",
+        type=str,
+        required=False,
+        default="backbone_output",
+        choices=["encoder_output", "backbone_output"],
+        help="Which latent representation to use for training",
+    )
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--device", type=str, default="cuda:0")
-    parser.add_argument("--sanity_check", action="store_true", 
-                        help="Run a sanity check to overfit a small batch of data")
-    parser.add_argument("--save_results", action="store_true", 
-                        help="Save training results to a text file")
+    parser.add_argument(
+        "--sanity_check",
+        action="store_true",
+        help="Run a sanity check to overfit a small batch of data",
+    )
+    parser.add_argument(
+        "--save_results",
+        action="store_true",
+        help="Save training results to a text file",
+    )
     args = parser.parse_args()
 
     # Check if file exists
@@ -135,10 +164,10 @@ if __name__ == "__main__":
 
     train_model(
         netcdf_path=args.netcdf_path,
-        #latent_type=args.latent_type,
+        # latent_type=args.latent_type,
         batch_size=args.batch_size,
         epochs=args.epochs,
         device=args.device,
         sanity_check=args.sanity_check,
-        save_results=args.save_results
-        )
+        save_results=args.save_results,
+    )

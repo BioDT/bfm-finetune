@@ -1,21 +1,22 @@
 import os
 from pathlib import Path
 
-import torch
-from hydra import compose, initialize
-from torch.utils.data import DataLoader
 import lightning as L
-
+import torch
 from bfm_model.bfm.dataloader_monthly import (
     LargeClimateDataset,
     custom_collate,
 )
 from bfm_model.bfm.test_lighting import BFM_lighting
+from hydra import compose, initialize
+from torch.utils.data import DataLoader
+
 from bfm_finetune.paths import REPO_FOLDER, STORAGE_DIR
 
 
 class BFMWithLatent(BFM_lighting):
     """Same class as in bfm_get_latent.py - extracts latents during forward pass"""
+
     def forward(self, batch, lead_time=2, batch_size: int = 1):
         encoded = self.encoder(batch, lead_time, batch_size)
         num_patches_h = self.H // self.encoder.patch_size
@@ -36,8 +37,8 @@ class BFMWithLatent(BFM_lighting):
         )
         output = self.decoder(backbone_output, batch, lead_time)
         return encoded, backbone_output, output
-    
-     # overridden to return latents
+
+    # overridden to return latents
     def predict_step(self, batch, batch_idx):
         records = []
         x, y = batch
@@ -61,11 +62,13 @@ def get_bfm_model_and_dataloader(bfm_cfg):
     checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
     if not os.path.exists(checkpoint_file):
         raise ValueError(f"checkpoint not found: {checkpoint_file}")
-    
+
     # Setup Swin parameters if needed
     swin_params = {}
     if bfm_cfg.model.backbone == "swin":
-        selected_swin_config = bfm_cfg.model_swin_backbone[bfm_cfg.model.swin_backbone_size]
+        selected_swin_config = bfm_cfg.model_swin_backbone[
+            bfm_cfg.model.swin_backbone_size
+        ]
         swin_params = {
             "swin_encoder_depths": tuple(selected_swin_config.encoder_depths),
             "swin_encoder_num_heads": tuple(selected_swin_config.encoder_num_heads),
@@ -79,7 +82,7 @@ def get_bfm_model_and_dataloader(bfm_cfg):
             "swin_drop_path_rate": selected_swin_config.drop_path_rate,
             "swin_use_lora": selected_swin_config.use_lora,
         }
-    
+
     # BFM args - same as in bfm_get_latent.py
     bfm_args = dict(
         surface_vars=(bfm_cfg.model.surface_vars),
@@ -107,10 +110,12 @@ def get_bfm_model_and_dataloader(bfm_cfg):
         batch_size=bfm_cfg.evaluation.batch_size,
         **swin_params,
     )
-    
+
     # Load model from checkpoint - exactly as in bfm_get_latent.py
-    model = BFMWithLatent.load_from_checkpoint(checkpoint_path=checkpoint_file, **bfm_args)
-    
+    model = BFMWithLatent.load_from_checkpoint(
+        checkpoint_path=checkpoint_file, **bfm_args
+    )
+
     # Setup dataset and dataloader
     test_dataset = LargeClimateDataset(
         data_dir=bfm_cfg.evaluation.test_data,
@@ -119,7 +124,7 @@ def get_bfm_model_and_dataloader(bfm_cfg):
         atmos_levels=bfm_cfg.data.atmos_levels,
         model_patch_size=bfm_cfg.model.patch_size,
     )
-    
+
     test_dataloader = DataLoader(
         test_dataset,
         batch_size=bfm_cfg.evaluation.batch_size,
@@ -128,19 +133,21 @@ def get_bfm_model_and_dataloader(bfm_cfg):
         drop_last=True,
         shuffle=False,
     )
-    
+
     # Extract filenames to use as time indices - instead of calling get_time_index()
     # Get file list from dataset
     time_index = []
     data_dir = bfm_cfg.evaluation.test_data
-    files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith(".pt")]
+    files = [
+        os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith(".pt")
+    ]
     files.sort()  # Sort to ensure consistent ordering
-    
+
     # Extract dates from filenames (assuming format like "batch_2018-06-01_to_2018-07-01.pt")
     for file in files:
         filename = os.path.basename(file)
         # Try to extract date range from filename
-        parts = filename.split('_')
+        parts = filename.split("_")
         if len(parts) >= 3 and "to" in filename:
             # e.g., batch_2018-06-01_to_2018-07-01.pt
             date_range = "_".join(parts[1:]).replace(".pt", "")
@@ -149,26 +156,32 @@ def get_bfm_model_and_dataloader(bfm_cfg):
         else:
             # If filename doesn't match expected pattern, use filename as index
             time_index.append(filename)
-            
-    
+
     trainer = L.Trainer(
         accelerator=bfm_cfg.training.accelerator,
         devices=bfm_cfg.training.devices,
         precision=bfm_cfg.training.precision,
         log_every_n_steps=bfm_cfg.training.log_steps,
         # limit_test_batches=1,
-        #limit_predict_batches=228,  # TODO Change this to select how many consecutive months you want to predict
+        # limit_predict_batches=228,  # TODO Change this to select how many consecutive months you want to predict
         logger=[],  # [mlf_logger_in_hydra_folder, mlf_logger_in_current_folder],
         enable_checkpointing=False,
         enable_progress_bar=True,
     )
-    print("The lnegth of the test_dataloader:", len(test_dataloader))  # Force dataset to load and check for errors
-    
+    print(
+        "The lnegth of the test_dataloader:", len(test_dataloader)
+    )  # Force dataset to load and check for errors
+
     predictions = trainer.predict(
-    model=model, ckpt_path=checkpoint_file, dataloaders=test_dataloader
+        model=model, ckpt_path=checkpoint_file, dataloaders=test_dataloader
     )
     # Generate time_index for all months from 2000-01 to 2019-12
     import pandas as pd
-    time_index = pd.date_range("2000-01-01", "2020-12-01", freq="MS").strftime("%Y-%m-%d").tolist()
+
+    time_index = (
+        pd.date_range("2000-01-01", "2020-12-01", freq="MS")
+        .strftime("%Y-%m-%d")
+        .tolist()
+    )
 
     return model, test_dataloader, time_index, predictions

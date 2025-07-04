@@ -434,6 +434,11 @@ def compute_geolifeclef_f1(pred, target, threshold=0.5):
     Compute F1 score using the formula:
     F1 = (1/N) ∑ TP_i / (TP_i + (FP_i + FN_i)/2)
 
+    Overview of GeoLifeCLEF 2024: Species Composition
+    Prediction with High Spatial Resolution at Continental
+    Scale using Remote Sensing
+    From: https://ceur-ws.org/Vol-3740/paper-186.pdf
+
     where:
     - TP_i = number of correctly predicted species
     - FP_i = number of species predicted but not observed

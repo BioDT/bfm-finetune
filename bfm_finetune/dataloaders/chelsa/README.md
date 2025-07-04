@@ -8,7 +8,7 @@ To create the batches, run the following command:
 python bfm_finetune/dataloaders/chelsa/batch.py
 ```
 
-The results will be saved in a netcdf file. 
+The results will be saved in a netcdf file.
 
 
 ## Congfigs
