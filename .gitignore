@@ -11,6 +11,7 @@ __pycache__/
 *$py.class
 outputs_bfm_finetune_48800/
 outputs_bfm_finetune_64400/
+bfm_finetune/predictions/
 # C extensions
 *.so
 
