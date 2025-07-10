@@ -13,6 +13,7 @@ outputs_bfm_finetune_48800/
 outputs_bfm_finetune_64400/
 # C extensions
 *.so
+bfm_finetune/predictions/
 
 bfm-model/
 # Distribution / packaging

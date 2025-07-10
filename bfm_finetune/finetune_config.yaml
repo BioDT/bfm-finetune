@@ -3,7 +3,11 @@ training:
   batch_size: 1
   epochs: 500
   lr: 3e-4
+<<<<<<< Updated upstream
   checkpoint_path: /projects/prjs1134/data/projects/biodt/storage/weights/finetune #TODO Add your checkpoint path here in the folder level e.g. /home/atrantas/bfm-finetune/bfm_finetune/outputs_bfm_finetune_48800/checkpoints/
+=======
+  checkpoint_path: /home/tkhan/bfm-finetune/outputs/2025-07-09/16-33-12/checkpoints/ #/projects/prjs1134/data/projects/biodt/storage/weights/finetune #TODO Add your checkpoint path here in the folder level e.g. /home/atrantas/bfm-finetune/bfm_finetune/outputs_bfm_finetune_48800/checkpoints/
+>>>>>>> Stashed changes
   val_every: 5
   backend: fsdp #ddp
   gpus: 0 # for multi-gpu runs
