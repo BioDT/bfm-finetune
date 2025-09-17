@@ -130,7 +130,7 @@ def main(cfg):
     print(f"Loaded checkpoint with best loss: {best_loss}")
     if best_loss == float('inf'):
         print("WARNING: Best loss is infinity - this may indicate an issue with checkpoint saving/loading")
-    
+
     # Set model to evaluation mode
     model.eval()
 

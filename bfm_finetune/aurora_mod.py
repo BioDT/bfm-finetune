@@ -222,7 +222,7 @@ class AuroraRaw(nn.Module):
         self.decoder = TemporalSpatialDecoder(n_species=n_species)
 
         if freeze_backbone:
-            freeze_except_lora(base_model)  
+            freeze_except_lora(base_model)
 
         self.patch_res = (
              4,
