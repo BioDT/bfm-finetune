@@ -36,6 +36,10 @@ Keep in mind that the less frequent ones appear only in a few cells of the grid 
 
 - To train the model, you can use the script `bfm_finetune/finetune_bfm_sdm.py`.
 
+```bash
+python bfm_finetune/finetune_bfm_sdm.py
+```
+
 - To visualise the predictions of the finetuned model, you can use the notebook `notebooks/geolifeclef_species.ipynb`.
 
 #### Abiotic Task
@@ -50,6 +54,10 @@ This will create yearly batches for all the 19 CHELSA variables. You can then co
 The latent variables and decoder oututs will be save as a netcdf file in the path defined in `bfm_finetune/dataloaders/chelsa/batch_config.yaml`.
 
 To train the model, you can use the script `bfm_finetune/finetune_chelsa.py`.
+
+```bash
+python bfm_finetune/finetune_chelsa.py
+```
 
 To visualise the predictions of the finetuned model, you can use the notebook `notebooks/chelsa_2010_tas_pr.ipynb`.
 
