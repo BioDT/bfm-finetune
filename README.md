@@ -18,7 +18,7 @@ module load 2024 Python/3.12.3-GCCcore-13.3.0
 
 Run the script `./initialize.sh`.
 
-### 5. Re-creating the batches
+### 5. Finetuning tasks 
 
 
 #### Biotic Task
