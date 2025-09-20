@@ -31,7 +31,7 @@ from bfm_finetune.utils import (
     load_checkpoint,
 )
 
-checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+checkpoint_file = "/projects/prjs1134/data/projects/biodt/storage/weights/iclr/21-50-39/checkpoints/'epoch=301-val_loss=0.16791.ckpt'"#STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
 
 if not os.path.exists(checkpoint_file):
     raise ValueError(f"checkpoint not found: {checkpoint_file}")

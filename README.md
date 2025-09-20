@@ -32,7 +32,11 @@ This will create yearly batches for all the 5016 distinct species. You can then 
 
 Keep in mind that the less frequent ones appear only in a few cells of the grid (after 1k). Also the closer you go to 5016, the highest CUDA memory you will need.
 
-Inside the batches saved to disk, `species_distribution` has shape `[T=2, Species, H, W]`.
+- Inside the batches saved to disk, `species_distribution` has shape `[T=2, Species, H, W]`.
+
+- To train the model, you can use the script `bfm_finetune/finetune_bfm_sdm.py`.
+
+- To visualise the predictions of the finetuned model, you can use the notebook `notebooks/geolifeclef_species.ipynb`.
 
 #### Abiotic Task
 
@@ -41,9 +45,15 @@ For the CHELSA-BFMLatents dataset, you can recreate the batches with:
 ```bash
 python bfm_finetune/dataloaders/chelsa/batch.py
 ```
-This will create yearly batches for all the 19 CHELSA variables. You can then configure in `bfm_finetune/finetune_config.yaml` for the time period you want to use (e.g. setting to 2010-2020, will take the 11 years of data), along with other parameters for the backbone and the decoder
+This will create yearly batches for all the 19 CHELSA variables. You can then configure in `bfm_finetune/finetune_config.yaml` for the time period you want to use (e.g. setting to 2010-2020, will take the 11 years of data), along with other parameters for the backbone and the decoder outputs.
 
-The results will be save as a netcdf file in the path defined in
+The latent variables and decoder oututs will be save as a netcdf file in the path defined in `bfm_finetune/dataloaders/chelsa/batch_config.yaml`.
+
+To train the model, you can use the script `bfm_finetune/finetune_chelsa.py`.
+
+To visualise the predictions of the finetuned model, you can use the notebook `notebooks/chelsa_2010_tas_pr.ipynb`.
+
+
 ### 6. Manually run code formatting / pre-commit
 
 You can manually run the command on all the files (even if not modified) with:
