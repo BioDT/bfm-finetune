@@ -21,8 +21,8 @@ Run the script `./initialize.sh`.
 ### 5. Finetuning tasks 
 
 
-#### Biotic Task
-For geolifeclef24 dataset, you can recreate the batches with:
+#### Biotic Task - Species Distribution Model
+For [geolifeclef24](https://www.kaggle.com/competitions/geolifeclef-2024) dataset, you can recreate the batches with:
 
 ```bash
 python bfm_finetune/dataloaders/geolifeclef_species/batch.py
@@ -42,9 +42,9 @@ python bfm_finetune/finetune_bfm_sdm.py
 
 - To visualise the predictions of the finetuned model, you can use the notebook `notebooks/geolifeclef_species.ipynb`.
 
-#### Abiotic Task
+#### Abiotic Task - Climate linear probing
 
-For the CHELSA-BFMLatents dataset, you can recreate the batches with:
+For the [CHELSA](https://chelsa-climate.org/) and BFMLatents datasets, you can recreate the batches with:
 
 ```bash
 python bfm_finetune/dataloaders/chelsa/batch.py
