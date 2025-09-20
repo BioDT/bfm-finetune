@@ -53,13 +53,13 @@ This will create yearly batches for all the 19 CHELSA variables. You can then co
 
 The latent variables and decoder oututs will be save as a netcdf file in the path defined in `bfm_finetune/dataloaders/chelsa/batch_config.yaml`.
 
-To train the model, you can use the script `bfm_finetune/finetune_chelsa.py`.
+- To train the model, you can use the script `bfm_finetune/finetune_chelsa.py`.
 
 ```bash
 python bfm_finetune/finetune_chelsa.py
 ```
 
-To visualise the predictions of the finetuned model, you can use the notebook `notebooks/chelsa_2010_tas_pr.ipynb`.
+- To visualise the predictions of the task, you can use the notebook `notebooks/chelsa_2010_tas_pr.ipynb`.
 
 
 ### 6. Manually run code formatting / pre-commit
