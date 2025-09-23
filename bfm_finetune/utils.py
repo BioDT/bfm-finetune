@@ -156,7 +156,7 @@ def load_checkpoint(
         return 0, float("inf")
     file_path = os.path.join(checkpoint_folder, "best_checkpoint.pth")
     if os.path.isfile(file_path):
-        checkpoint = torch.load(file_path)
+        checkpoint = torch.load(file_path, weights_only=True)
         model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
         if load_optim_state:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
