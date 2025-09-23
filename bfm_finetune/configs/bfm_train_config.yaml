@@ -1,32 +1,3 @@
-device: cuda:0
-
-grid:
-  lat_start: 32.0
-  lat_end: 72.0
-  lon_start: -25.0
-  lon_end: 45.0
-  resolution: 0.25
-
-timeperiod:
-  start_year: 2000
-  start_month: 1
-  end_year: 2019
-  end_month: 12
-
-#data:
-#  tas_dir: /home/tkhan/biodt/storage/finetune/chelsa/tas_raw
-#  pr_dir: /home/tkhan/biodt/storage/finetune/chelsa/pr_raw
-
-data_chelsa:
-  tas_dir: /projects/prjs1134/data/projects/biodt/storage/finetune/chelsa/tas_raw
-  pr_dir: /projects/prjs1134/data/projects/biodt/storage/finetune/chelsa/pr_raw
-
-output:
-  file: /home/atrantas/bfm-finetune/produced_output/chelsa_bfm_latents_downsampled_decoded.nc
-
-# model + loader logic should be defined in your custom script
-# e.g. `batch_model_loader.py` with a method `get_bfm_model_and_dataloader(cfg)`
-
 model:
   T: 2   # Time steps
   surface_vars: ["t2m", "msl", "slt", "z", "u10", "v10", "lsm"] # Surface variables
@@ -108,7 +79,6 @@ mlflow:
   port: 8082 # change here port if you get [Errno 98] Address already in use
 
 evaluation:
-  test_data: /projects/prjs1134/data/projects/biodt/storage/final_dataset_monthly/complete_dataset
   rollout_data: /projects/prjs1134/data/projects/biodt/storage/final_dataset_monthly/rollout # Initial batch to start a rollout (need 1)
   checkpoint_path: # Add your checkpoint path (weights.ckpt) to evaluate the model
   batch_size: 1
@@ -144,8 +114,8 @@ model_swin_backbone:
     mlp_ratio: 4.0
     qkv_bias: True
     drop_rate: 0.0
-    attn_drop_rate: 0.1
-    drop_path_rate: 0.1
+    attn_drop_rate: 0.25
+    drop_path_rate: 0.25
     use_lora: False
   medium:
     encoder_depths: [2,2]

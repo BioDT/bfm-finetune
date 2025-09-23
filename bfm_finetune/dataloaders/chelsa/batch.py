@@ -116,8 +116,8 @@ def main(cfg: DictConfig):
     valid_indices = []
 
     print("Checking available dates in CHELSA dataset...")
-    tas_files = os.listdir(cfg.data.tas_dir)
-    pr_files = os.listdir(cfg.data.pr_dir)
+    tas_files = os.listdir(cfg.data_chelsa.tas_dir)
+    pr_files = os.listdir(cfg.data_chelsa.pr_dir)
 
     tas_dates = set(extract_date(f, "tas") for f in tas_files if extract_date(f, "tas"))
     pr_dates = set(extract_date(f, "pr") for f in pr_files if extract_date(f, "pr"))
@@ -181,10 +181,10 @@ def main(cfg: DictConfig):
             torch.cuda.empty_cache()
 
             tas_path = os.path.join(
-                cfg.data.tas_dir, f"CHELSA_tas_{month:02d}_{year}_V.2.1.tif"
+                cfg.data_chelsa.tas_dir, f"CHELSA_tas_{month:02d}_{year}_V.2.1.tif"
             )
             pr_path = os.path.join(
-                cfg.data.pr_dir, f"CHELSA_pr_{month:02d}_{year}_V.2.1.tif"
+                cfg.data_chelsa.pr_dir, f"CHELSA_pr_{month:02d}_{year}_V.2.1.tif"
             )
 
             chelsa = load_chelsa_targets(tas_path, pr_path, lat_bins, lon_bins)
@@ -290,6 +290,7 @@ def main(cfg: DictConfig):
     print(f"First latent shape: {all_latents[0].shape}")
     print(f"First backbone shape: {all_backbone_outputs[0].shape}")
 
+    # TODO FIX IT HERE - FOR MEMORY USAGE
     # Stack the arrays
     latent_arr = np.stack(all_latents, axis=0)
     backbone_output_arr = np.stack(all_backbone_outputs, axis=0)
@@ -428,8 +429,8 @@ def main(cfg: DictConfig):
     ds = xr.merge([ds_model, ds_target])
 
     # Get the output path from the correct location in the config
-    if hasattr(cfg.data, "output") and hasattr(cfg.data.output, "file"):
-        output_path = Path(cfg.data.output.file)
+    if hasattr(cfg.data_chelsa, "output") and hasattr(cfg.data_chelsa.output, "file"):
+        output_path = Path(cfg.data_chelsa.output.file)
     else:
         # Use a default path if not specified in config
         current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
