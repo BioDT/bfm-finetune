@@ -18,7 +18,20 @@ module load 2024 Python/3.12.3-GCCcore-13.3.0
 
 Run the script `./initialize.sh`.
 
-### 5. Finetuning tasks 
+### 3. Finetuning tasks
+
+#### Install or update BFM to its latest version
+
+```
+cd bfm-model
+git pull origin
+git checkout main
+git pull
+
+OR
+
+pip install git+https://github.com/BioDT/bfm-model.git
+```
 
 
 #### Biotic Task - Species Distribution Model
@@ -62,7 +75,7 @@ python bfm_finetune/finetune_chelsa.py
 - To visualise the predictions of the task, you can use the notebook `notebooks/chelsa_2010_tas_pr.ipynb`.
 
 
-### 6. Manually run code formatting / pre-commit
+### 4. Manually run code formatting / pre-commit
 
 You can manually run the command on all the files (even if not modified) with:
 
@@ -122,8 +135,8 @@ Inference: `bfm_finetune/prithvi/inference.sh`
 * [x] Monitoring & Logging
 * [x] Checkpointing & Loading
 * [x] Result visualisation
-* [ ] Validate new visualisations & metrics
-* [ ] Compare with baselines (50%)
+* [x] Validate new visualisations & metrics
+* [x] Compare with baselines (50%)
 * [x] Upsample to (721, 1440) earth grid in the encoder and downsample to (152, 320) in decoder. Edit the coordinates on the dataset
 * [x] Normalization on train data
 * [x] Validate way of Lat Long (H,W) processed from the model but also from our dataset/plotting functions

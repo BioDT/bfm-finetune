@@ -6,8 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchmetrics import MeanSquaredError, R2Score
-from tqdm import tqdm  # <-- add tqdm import
-
+from tqdm import tqdm
 from bfm_finetune.dataloaders.chelsa.dataloader import LatentCHELSADataset
 
 
@@ -99,7 +98,6 @@ def train_model(
         r2.reset()
         rmse.reset()
 
-        # Wrap dataloader with tqdm for progress bar
         for x, y in tqdm(dataloader, desc=f"Epoch {epoch+1}/{epochs}"):
             x, y = x.to(device), y.to(device)
             # Normalize x and y
@@ -158,7 +156,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Check if file exists
     if not os.path.exists(args.netcdf_path):
         raise FileNotFoundError(f"NetCDF file not found: {args.netcdf_path}")
 
