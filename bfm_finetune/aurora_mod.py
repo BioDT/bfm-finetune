@@ -1,16 +1,12 @@
-import contextlib
-import dataclasses
+
 import types
 from datetime import timedelta
-from functools import partial
 from typing import Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint as cp
-from aurora.batch import Batch
 from torch.utils.checkpoint import checkpoint
 
 from bfm_finetune.lora_adapter import LoRAAdapter
@@ -124,7 +120,7 @@ class TemporalSpatialEncoder(nn.Module):
     Accepts x : (B, T=2, C=500, 152, 320)
     Returns (B, 259 200, 512)
 
-    Strategy: merge time -> channel (simple, no blur), 1×1 projection, flatten.
+    Strategy: merge time -> channel (simple, no blur), 1x1 projection, flatten.
     """
 
     def __init__(

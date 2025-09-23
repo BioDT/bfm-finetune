@@ -1,17 +1,23 @@
-import importlib
 import math
 import os
 from pathlib import Path
 
 import torch
 import torch.nn as nn
-from bfm_model.bfm.rollout_finetuning import BFM_Forecastinglighting as BFM_forecast
-from bfm_model.bfm.test_lighting import BFM_lighting
-from bfm_model.bfm.train_lighting import BFM_lighting as BFM_lighting_t
-from hydra import compose, initialize
-from omegaconf import OmegaConf
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
+from bfm_model.bfm.model_helpers import (
+    find_checkpoint_to_resume_from,
+    get_mlflow_logger,
+    get_trainer,
+    post_training_get_last_checkpoint,
+    setup_bfm_model,
+    setup_checkpoint_callback,
+    setup_fsdp,
+)
+from hydra import compose, initialize
+from omegaconf import OmegaConf
+
 
 from bfm_finetune import bfm_mod
 from bfm_finetune.dataloaders.dataloader_utils import custom_collate_fn
@@ -36,97 +42,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import Counter
 
-checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+# V1
+# checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+# V2
+checkpoint_file = STORAGE_DIR / "weights" / "iclr" / "21-50-39/checkpoints/epoch=301-val_loss=0.16791.ckpt"
 
 if not os.path.exists(checkpoint_file):
     raise ValueError(f"checkpoint not found: {checkpoint_file}")
 
-# checkpoint = torch.load(checkpoint_file)
-# checkpoint.keys()
-# # dict_keys(['epoch', 'global_step', 'pytorch-lightning_version', 'state_dict', 'loops', 'callbacks', 'optimizer_states', 'lr_schedulers'])
-# checkpoint["state_dict"].keys()  # here all the weights
 
-
-# raise ValueError(REPO_FOLDER)
-bfm_config_path = REPO_FOLDER / "bfm-model/bfm_model/bfm/configs"
-cwd = Path(os.getcwd())
-bfm_config_path = str(bfm_config_path.relative_to(cwd))
-bfm_config_path = f"../bfm-model/bfm_model/bfm/configs"
+bfm_config_path = "configs"
 print(bfm_config_path)
 with initialize(version_base=None, config_path=bfm_config_path, job_name="test_app"):
-    cfg = compose(config_name="train_config.yaml")
+    cfg = compose(config_name="bfm_train_config.yaml")
 
-swin_params = {}
-if cfg.model.backbone == "swin":
-    selected_swin_config = cfg.model_swin_backbone[cfg.model.swin_backbone_size]
-    swin_params = {
-        "swin_encoder_depths": tuple(selected_swin_config.encoder_depths),
-        "swin_encoder_num_heads": tuple(selected_swin_config.encoder_num_heads),
-        "swin_decoder_depths": tuple(selected_swin_config.decoder_depths),
-        "swin_decoder_num_heads": tuple(selected_swin_config.decoder_num_heads),
-        "swin_window_size": tuple(selected_swin_config.window_size),
-        "swin_mlp_ratio": selected_swin_config.mlp_ratio,
-        "swin_qkv_bias": selected_swin_config.qkv_bias,
-        "swin_drop_rate": selected_swin_config.drop_rate,
-        "swin_attn_drop_rate": selected_swin_config.attn_drop_rate,
-        "swin_drop_path_rate": selected_swin_config.drop_path_rate,
-        "swin_use_lora": selected_swin_config.use_lora,
-    }
-
-# BFM args
-bfm_args = dict(
-    surface_vars=(cfg.model.surface_vars),
-    edaphic_vars=(cfg.model.edaphic_vars),
-    atmos_vars=(cfg.model.atmos_vars),
-    climate_vars=(cfg.model.climate_vars),
-    species_vars=(cfg.model.species_vars),
-    vegetation_vars=(cfg.model.vegetation_vars),
-    land_vars=(cfg.model.land_vars),
-    agriculture_vars=(cfg.model.agriculture_vars),
-    forest_vars=(cfg.model.forest_vars),
-    redlist_vars=(cfg.model.redlist_vars),
-    misc_vars=(cfg.model.misc_vars),
-    atmos_levels=cfg.data.atmos_levels,
-    species_num=cfg.data.species_number,
-    H=cfg.model.H,
-    W=cfg.model.W,
-    num_latent_tokens=cfg.model.num_latent_tokens,
-    backbone_type=cfg.model.backbone,
-    patch_size=cfg.model.patch_size,
-    embed_dim=cfg.model.embed_dim,
-    num_heads=cfg.model.num_heads,
-    head_dim=cfg.model.head_dim,
-    depth=cfg.model.depth,
-    learning_rate=cfg.finetune.lr,
-    weight_decay=cfg.finetune.wd,
-    batch_size=cfg.finetune.batch_size,
-    td_learning=cfg.finetune.td_learning,
-    ground_truth_dataset=None,
-    strict=False,  # False if loading from a pre-trained with PEFT checkpoint
-    peft_r=cfg.finetune.rank,
-    lora_alpha=cfg.finetune.lora_alpha,
-    d_initial=cfg.finetune.d_initial,
-    peft_dropout=cfg.finetune.peft_dropout,
-    peft_steps=cfg.finetune.rollout_steps,
-    peft_mode=cfg.finetune.peft_mode,
-    use_lora=cfg.finetune.use_lora,
-    use_vera=cfg.finetune.use_vera,
-    rollout_steps=cfg.finetune.rollout_steps,
-    # lora_steps=cfg.finetune.rollout_steps, # 1 month
-    # lora_mode=cfg.finetune.lora_mode, # every step + layers #single
-    **swin_params,
-)
-
-base_model = BFM_forecast.load_from_checkpoint(
-    checkpoint_path=checkpoint_file, **bfm_args
-)
-# model = BFM_lighting_t.load_from_checkpoint(
-#     checkpoint_path=checkpoint_file,
-#     **bfm_args,
-# )
-# model.load_state_dict(checkpoint['model'])
-# optimizer.load_state_dict(checkpoint['optimizer'])
-
+base_model = setup_bfm_model(cfg, mode="train")
 
 # FINETUNE
 finetune_config_path = "."  # f"bfm_finetune"

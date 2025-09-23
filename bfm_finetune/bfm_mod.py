@@ -500,8 +500,8 @@ class BFMRaw(nn.Module):
         self.base_model.encoder = nn.Identity()
         self.base_model.decoder = nn.Identity()
 
-        self.encoder = TemporalSpatialEncoder(n_species=n_species, embed_dim=256)
-        self.decoder = TemporalSpatialDecoder(n_species=n_species, in_dim=256)
+        self.encoder = TemporalSpatialEncoder(n_species=n_species, embed_dim=512, target_hw=(115, 140))
+        self.decoder = TemporalSpatialDecoder(n_species=n_species, in_dim=512, source_hw=(115, 140))
         # self.encoder = LatentPerceiverEncoder()
         # self.decoder = LatentPerceiverDecoder()
         # self.encoder = ConvFormerEncoder()
@@ -524,6 +524,7 @@ class BFMRaw(nn.Module):
         """
         x = batch["species_distribution"]
         encoded = self.encoder(x)
+        # print(f"encoded shape: {encoded.shape}")
         # 64400
         # patch_shape = (
         #     23,
@@ -531,12 +532,19 @@ class BFMRaw(nn.Module):
         #     40,
         # )
 
-        # 48800
-        patch_shape = (
-            16,
-            70,
-            40,
-        )
+        # 48800 # Works with weights v1
+        # encoded shape: torch.Size([1, 44800, 512])
+        # patch_shape = (
+        #     16,
+        #     70,
+        #     40,
+        # )
+
+        # V2
+        # 700 patches
+        # 161000 tokens
+        # (23, 20, 35)
+        patch_shape = (23, 20, 35)
         # print("patch_shape", patch_shape)
         # print(f"Encoded shape: {encoded.shape}")
         feats = self.base_model.backbone(
