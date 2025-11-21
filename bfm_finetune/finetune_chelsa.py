@@ -10,6 +10,15 @@ from tqdm import tqdm
 from bfm_finetune.dataloaders.chelsa.dataloader import LatentCHELSADataset
 
 
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.svm import SVR
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
+from sklearn.multioutput import MultiOutputRegressor
+
+import numpy as np
+
+
 class ClimateRegressor(nn.Module):
     def __init__(self, input_dim, hidden_dim=128, output_dim=2):
         super().__init__()
@@ -30,6 +39,7 @@ def train_model(
     device="cuda",
     sanity_check=True,
     save_results=True,
+    run_benchmark=False
 ):
     dataset = LatentCHELSADataset(netcdf_path)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -58,6 +68,26 @@ def train_model(
     x_std = torch.tensor(inputs_np.std(axis=(0, 1)), dtype=torch.float32).to(device)
     y_mean = torch.tensor(targets_np.mean(axis=(0, 1)), dtype=torch.float32).to(device)
     y_std = torch.tensor(targets_np.std(axis=(0, 1)), dtype=torch.float32).to(device)
+
+    # Mean-pool and normalize entire dataset for sklearn benchmarks
+    inputs_tensor = torch.tensor(inputs_np, dtype=torch.float32)
+    targets_tensor = torch.tensor(targets_np, dtype=torch.float32)
+
+    X_flat = (inputs_tensor.mean(dim=1) - x_mean.cpu()) / (x_std.cpu() + 1e-8)
+    if targets_tensor.ndim == 3:
+        Y_flat = (targets_tensor.mean(dim=1) - y_mean.cpu()) / (y_std.cpu() + 1e-8)
+    else:
+        Y_flat = (targets_tensor - y_mean.cpu()) / (y_std.cpu() + 1e-8)
+
+    # Run sklearn benchmarks
+    if run_benchmark:
+        benchmark_models(
+            X_flat.numpy(),
+            Y_flat.numpy(),
+            y_mean,
+            y_std,
+            save_results=save_results,
+        )
 
     # --- Sanity check: Overfit a small batch ---
     if sanity_check:
@@ -116,18 +146,54 @@ def train_model(
             rmse.update(pred, y)
             total_loss += loss.item()
 
-            if save_results:
-                # store results to txt file
-                with open(
-                    "/home/tkhan/bfm-finetune/outputs/chelsa_training_results.txt", "a"
-                ) as f:
-                    f.write(
-                        f"Epoch {epoch+1}, Loss: {loss.item():.4f}, R2: {r2.compute().item():.4f}, RMSE: {rmse.compute().item():.4f}\n"
-                    )
-
+        if save_results:
+            with open("/home/tkhan/bfm-finetune/outputs/chelsa_training_results.txt", "a") as f:
+                f.write(
+                    f"Epoch {epoch+1}, Loss: {total_loss/len(dataloader):.4f}, "
+                    f"R2: {r2.compute().item():.4f}, RMSE: {rmse.compute().item():.4f}\n"
+                )
         print(
             f"Epoch {epoch+1}: Loss={total_loss/len(dataloader):.4f}, R2={r2.compute():.4f}, RMSE={rmse.compute():.4f}"
         )
+
+def benchmark_models(X, y, y_mean, y_std, save_results=False):
+    print("Running benchmark models (Random Forest, SVM)...")
+
+    # Split into train/test
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    # Unnormalize targets
+    y_train_denorm = y_train * y_std.cpu().numpy() + y_mean.cpu().numpy()
+    y_test_denorm = y_test * y_std.cpu().numpy() + y_mean.cpu().numpy()
+
+    
+    models = {
+        "RandomForest": RandomForestRegressor(n_estimators=100, random_state=42),
+        "SVM": MultiOutputRegressor(SVR(kernel="rbf")),
+    }
+
+    results = {}
+    for name, model in models.items():
+        model.fit(X_train, y_train_denorm)
+        preds = model.predict(X_test)
+
+        # Normalize preds and targets (same way as in PyTorch model)
+        y_test_norm = (y_test_denorm - y_mean.cpu().numpy()) / (y_std.cpu().numpy() + 1e-8)
+        preds_norm = (preds - y_mean.cpu().numpy()) / (y_std.cpu().numpy() + 1e-8)
+
+        # Compute RMSE and R2 in normalized space (unitless)
+        rmse = np.sqrt(mean_squared_error(y_test_norm, preds_norm))
+        r2 = r2_score(y_test_norm, preds_norm)
+        results[name] = {"RMSE": rmse, "R2": r2}
+        print(f"{name} - RMSE: {rmse:.4f}, R2: {r2:.4f}")
+
+        if save_results:
+            with open("benchmark_results.txt", "a") as f:
+                f.write(f"{name} - RMSE: {rmse:.4f}, R2: {r2:.4f}\n")
+
+    return results
 
 
 if __name__ == "__main__":
@@ -144,6 +210,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("--benchmark", action="store_true", help="Run sklearn benchmark models")
     parser.add_argument(
         "--sanity_check",
         action="store_true",
@@ -167,4 +234,5 @@ if __name__ == "__main__":
         device=args.device,
         sanity_check=args.sanity_check,
         save_results=args.save_results,
+        run_benchmark=args.benchmark,
     )
