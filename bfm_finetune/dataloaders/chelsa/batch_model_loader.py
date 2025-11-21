@@ -7,14 +7,17 @@ from bfm_model.bfm.dataloader_monthly import (
     LargeClimateDataset,
     custom_collate,
 )
-from bfm_model.bfm.test_lighting import BFM_lighting
+from bfm_model.bfm.model import BFM
+from bfm_model.bfm.model_helpers import setup_bfm_model
 from hydra import compose, initialize
 from torch.utils.data import DataLoader
 
 from bfm_finetune.paths import REPO_FOLDER, STORAGE_DIR
 
+# from bfm_model.bfm.test_lighting import BFM_lighting
 
-class BFMWithLatent(BFM_lighting):
+
+class BFMWithLatent(BFM):
     """Same class as in bfm_get_latent.py - extracts latents during forward pass"""
 
     def forward(self, batch, lead_time=2, batch_size: int = 1):
@@ -59,7 +62,14 @@ class BFMWithLatent(BFM_lighting):
 
 def get_bfm_model_and_dataloader(bfm_cfg):
     """Function to load BFM model and dataloader as specified in the config"""
-    checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+    # checkpoint_file = STORAGE_DIR / "weights" / "epoch=268-val_loss=0.00493.ckpt"
+    checkpoint_file = (
+        STORAGE_DIR
+        / "weights"
+        / "iclr"
+        / "21-50-39/checkpoints/epoch=301-val_loss=0.16791.ckpt"
+    )
+
     if not os.path.exists(checkpoint_file):
         raise ValueError(f"checkpoint not found: {checkpoint_file}")
 
@@ -80,7 +90,6 @@ def get_bfm_model_and_dataloader(bfm_cfg):
             "swin_drop_rate": selected_swin_config.drop_rate,
             "swin_attn_drop_rate": selected_swin_config.attn_drop_rate,
             "swin_drop_path_rate": selected_swin_config.drop_path_rate,
-            "swin_use_lora": selected_swin_config.use_lora,
         }
 
     # BFM args - same as in bfm_get_latent.py
@@ -107,7 +116,13 @@ def get_bfm_model_and_dataloader(bfm_cfg):
         num_heads=bfm_cfg.model.num_heads,
         head_dim=bfm_cfg.model.head_dim,
         depth=bfm_cfg.model.depth,
-        batch_size=bfm_cfg.evaluation.batch_size,
+        learning_rate=bfm_cfg.training.lr,
+        weight_decay=bfm_cfg.training.wd,
+        batch_size=bfm_cfg.training.batch_size,
+        td_learning=bfm_cfg.training.td_learning,
+        land_mask_path=bfm_cfg.data.land_mask_path,
+        use_mask=bfm_cfg.training.use_mask,
+        partially_masked_groups=bfm_cfg.training.partially_masked_groups,
         **swin_params,
     )
 
