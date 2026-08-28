@@ -1,136 +1,83 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# Idempotent environment setup: submodules, in-project venv, dependencies, git hooks.
+#
+#   ./initialize.sh                 # core install (eumon benchmark and BioAnalyst tasks)
+#   ./initialize.sh --with-prithvi  # add the Prithvi-WxC dependency group
+#   ./initialize.sh --with-assets   # additionally fetch the legacy task assets (large)
+set -euo pipefail
+cd "$(dirname "$0")"
 
-# STORAGE_DIR is the root of all the data
-if [[ $HOSTNAME =~ "snellius" ]]; then
-    export STORAGE_DIR=/projects/prjs1134/data/projects/biodt/storage # snellius
-else
-    export STORAGE_DIR=data # local folder
-fi
-echo "STORAGE_DIR=$STORAGE_DIR"
+WITH_PRITHVI=0
+WITH_ASSETS=0
+for arg in "$@"; do
+    case $arg in
+        --with-prithvi) WITH_PRITHVI=1 ;;
+        --with-assets)  WITH_PRITHVI=1; WITH_ASSETS=1 ;;
+        *) echo "unknown option: $arg (use --with-prithvi / --with-assets)"; exit 2 ;;
+    esac
+done
 
-# load proper modules to be able to install
-if [[ $HOSTNAME =~ "snellius" ]]; then
+if [[ ${HOSTNAME:-} =~ snellius ]]; then
     module purge
     module load 2024 Python/3.12.3-GCCcore-13.3.0
 fi
 
-# poetry to venv
-VENV_PATH=.venv
-if test -d $VENV_PATH; then
-    echo "venv: $VENV_PATH already exists, using it"
-else
-    # create venv
-    echo "creating venv at: $VENV_PATH"
-    python3 -m venv $VENV_PATH
-fi
+PY=${PYTHON:-python3.12}
+command -v "$PY" >/dev/null 2>&1 || PY=python3
 
-# init all submodules
 git submodule update --init --recursive
 
-# install poetry
-source $VENV_PATH/bin/activate
-if ! [ -x "$(command -v poetry)" ]; then
-    echo 'INFO: poetry is not installed. Installing'
-    pip install poetry
+if [ ! -d .venv ]; then
+    echo "creating .venv with $("$PY" --version)"
+    "$PY" -m venv .venv
 fi
-# pip install poetry
+.venv/bin/pip install --quiet --upgrade pip poetry
 
-
-# install python dependencies
-poetry install
-
-# install pre-commit git hooks (formats code)
-pre-commit install
-
-echo Python path: $(which python)
-
-######################################################################################
-# prithvi gravity wave finetuning
-######################################################################################
-PRITHVI_CHECKPOINT_URL=https://huggingface.co/ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout/resolve/main/prithvi.wxc.rollout.2300m.v1.pt?download=true
-PRITHVI_CHECKPOINT_DIR=$STORAGE_DIR/checkpoints_prithvi
-PRITHVI_CHECKPOINT_PATH=$PRITHVI_CHECKPOINT_DIR/prithvi.wxc.rollout.2300m.v1.pt
-if test -f $PRITHVI_CHECKPOINT_PATH; then
-    echo "PRITHVI_CHECKPOINT_PATH: $PRITHVI_CHECKPOINT_PATH already exists, using it"
+if [ $WITH_PRITHVI -eq 1 ]; then
+    .venv/bin/poetry install --with prithvi
 else
-    echo "PRITHVI_CHECKPOINT_PATH: $PRITHVI_CHECKPOINT_PATH downloading..."
-    mkdir -p $PRITHVI_CHECKPOINT_DIR
-    wget $PRITHVI_CHECKPOINT_URL -O $PRITHVI_CHECKPOINT_PATH
-    echo "PRITHVI_CHECKPOINT_PATH downloaded to $PRITHVI_CHECKPOINT_PATH"
+    .venv/bin/poetry install
 fi
 
+.venv/bin/pre-commit install
+echo "environment ready: $(.venv/bin/python --version) at .venv/bin/python"
+echo
+echo "benchmark inputs and weights (pinned SHA-256s):"
+echo "  .venv/bin/python -m bfm_finetune.eumon.download fetch-all"
 
-######################################################################################
-# BFM finetuning
-######################################################################################
-# checkpoint (snellius): /projects/prjs1134/data/projects/biodt/storage/weights/epoch=268-val_loss=0.00493.ckpt
-# TODO: update script to download from huggingface when will be published there
-# checkpoint (non-snellius): data/weights/epoch=268-val_loss=0.00493.ckpt
+[ $WITH_ASSETS -eq 1 ] || exit 0
 
+##############################################################################
+# Legacy task assets: Prithvi-WxC checkpoint, GeoLifeCLEF-24, bioVars
+##############################################################################
+STORAGE_DIR=${STORAGE_DIR:-data}
+[[ ${HOSTNAME:-} =~ snellius ]] && STORAGE_DIR=/projects/prjs1134/data/projects/biodt/storage
+echo "STORAGE_DIR=$STORAGE_DIR"
 
-######################################################################################
-# geolifeclef24 batches
-######################################################################################
-
-# download source csv
-echo "downloading geolifeclef source csv.."
-PA_CSV_URL=https://lab.plantnet.org/seafile/d/bdb829337aa44a9489f6/files/?p=%2FPresenceAbsenceSurveys%2FGLC24-PA-metadata-train.csv
-GEOLIFECLEF_PATH=$STORAGE_DIR/finetune/geolifeclef24
-GEOLIFECLEF_FILE=$GEOLIFECLEF_PATH/GLC24_PA_metadata_train.csv
-if test -f $GEOLIFECLEF_FILE; then
-    echo "GEOLIFECLEF_FILE: $GEOLIFECLEF_FILE already exists, using it"
-else
-    mkdir -p $GEOLIFECLEF_PATH
-    python bfm_finetune/plantnet_downloader.py $PA_CSV_URL $GEOLIFECLEF_FILE
+PRITHVI_DIR=$STORAGE_DIR/checkpoints_prithvi
+PRITHVI_CKPT=$PRITHVI_DIR/prithvi.wxc.rollout.2300m.v1.pt
+if [ ! -f "$PRITHVI_CKPT" ]; then
+    mkdir -p "$PRITHVI_DIR"
+    wget "https://huggingface.co/ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout/resolve/main/prithvi.wxc.rollout.2300m.v1.pt?download=true" \
+        -O "$PRITHVI_CKPT"
 fi
 
-echo "creating batches for geolifeclef..."
-GEOLIFE_AURORASHAPE_PATH=$GEOLIFECLEF_PATH/aurorashape_species/train
-files=$(shopt -s nullglob dotglob; echo $GEOLIFE_AURORASHAPE_PATH)
-if (( ${#files} )) ; then
-    echo "$GEOLIFE_AURORASHAPE_PATH contains files"
-else
-    echo "$GEOLIFE_AURORASHAPE_PATH is empty (or does not exist or is a file)"
-    python bfm_finetune/dataloaders/geolifeclef_species/batch.py
+GLC_DIR=$STORAGE_DIR/finetune/geolifeclef24
+GLC_CSV=$GLC_DIR/GLC24_PA_metadata_train.csv
+if [ ! -f "$GLC_CSV" ]; then
+    mkdir -p "$GLC_DIR"
+    .venv/bin/python bfm_finetune/plantnet_downloader.py \
+        "https://lab.plantnet.org/seafile/d/bdb829337aa44a9489f6/files/?p=%2FPresenceAbsenceSurveys%2FGLC24-PA-metadata-train.csv" \
+        "$GLC_CSV"
 fi
+[ -d "$GLC_DIR/aurorashape_species/train" ] || .venv/bin/python bfm_finetune/dataloaders/geolifeclef_species/batch.py
+[ -d "$GLC_DIR/prithvi_species_patches/train" ] || .venv/bin/python bfm_finetune/prithvi/create_patches.py
 
-echo "creating batches for geolifeclef+prithvi..."
-GEOLIFE_PRITHVI_PATH=$GEOLIFECLEF_PATH/prithvi_species_patches/train
-files=$(shopt -s nullglob dotglob; echo $GEOLIFE_PRITHVI_PATH)
-if (( ${#files} )) ; then
-    echo "$GEOLIFE_PRITHVI_PATH contains files"
-else
-    echo "$GEOLIFE_PRITHVI_PATH is empty (or does not exist or is a file)"
-    python bfm_finetune/prithvi/create_patches.py
-fi
+BIOVARS_DIR=$STORAGE_DIR/finetune/biovars
+BIOVARS_TAR=$BIOVARS_DIR/bioVars_1971-2000_met.tar.gz
+BIOVARS_OUT=$BIOVARS_DIR/bioVars_1971-2000_met
+mkdir -p "$BIOVARS_OUT"
+[ -f "$BIOVARS_TAR" ] || wget "https://zenodo.org/records/14624171/files/bioVars_1971-2000_met.tar.gz?download=1" -O "$BIOVARS_TAR"
+[ -n "$(ls -A "$BIOVARS_OUT" 2>/dev/null)" ] || tar -xzf "$BIOVARS_TAR" -C "$BIOVARS_OUT"
 
-
-
-######################################################################################
-# biovars batches
-######################################################################################
-
-echo "preparing biovars files.."
-BIOVARS_FILE_NAME_WITHOUT_EXTENSION=bioVars_1971-2000_met
-BIOVARS_FILE_NAME_WITH_EXTENSION=$BIOVARS_FILE_NAME_WITHOUT_EXTENSION.tar.gz
-BIOVARS_URL=https://zenodo.org/records/14624171/files/$BIOVARS_FILE_NAME_WITH_EXTENSION?download=1
-BIOVARS_PATH=$STORAGE_DIR/finetune/biovars
-BIOVARS_EXTRACTED_PATH=$BIOVARS_PATH/$BIOVARS_FILE_NAME_WITHOUT_EXTENSION
-BIOVARS_FILE_PATH=$BIOVARS_PATH/$BIOVARS_FILE_NAME_WITH_EXTENSION
-mkdir -p $BIOVARS_PATH
-if test -f $BIOVARS_FILE_PATH; then
-    echo "BIOVARS_FILE_PATH: $BIOVARS_FILE_PATH already exists, using it"
-else
-    wget $BIOVARS_URL -O $BIOVARS_FILE_PATH
-fi
-mkdir -p $BIOVARS_EXTRACTED_PATH
-files=$(shopt -s nullglob dotglob; echo $BIOVARS_EXTRACTED_PATH)
-if (( ${#files} )) ; then
-    echo "$BIOVARS_EXTRACTED_PATH contains files"
-else
-    echo "$BIOVARS_EXTRACTED_PATH is empty (or does not exist or is a file)"
-    tar -xvzf $BIOVARS_FILE_PATH -C $BIOVARS_EXTRACTED_PATH
-fi
-
-echo "DONE!"
+echo "DONE"

@@ -5,6 +5,9 @@ outputs/
 mlruns/
 checkpoints/
 results/
+artefacts/
+weights/
+runs/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -16,7 +19,8 @@ outputs_bfm_spatial/
 *.so
 bfm_finetune/predictions/
 
-bfm-model/
+# bfm-model is a submodule; also ignore a local symlink/checkout when uninitialised
+bfm-model
 # Distribution / packaging
 .Python
 build/
