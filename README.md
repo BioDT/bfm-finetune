@@ -1,142 +1,167 @@
 # bfm-finetune
 
-## Getting started
+Evaluation and fine-tuning benchmarks for [BioAnalyst](https://github.com/BioDT/bfm-model)
+(BFM), the Biodiversity Foundation Model. The core of the repository is the **eumon
+benchmark**: three biotic forecasting tasks and one abiotic (CHELSA) task, scored against
+pre-registered null models and classical baselines on a four-setting evaluation ladder for
+BioAnalyst and Aurora. Earlier fine-tuning experiments are retained as legacy tasks.
 
-### 1. If you're on Snellius
+## Repository layout
 
-On Snellius you need to execute the following first in order to use `python3.11` / `python3.12`:
+```
+bfm-finetune/
+├── bfm_finetune/
+│   └── eumon/            # the benchmark package (panels, nulls, baselines, ladder)
+├── scripts/              # run.py, audit.py, preflight.py, l3_smoke.py, campaign.sh
+├── tests/                # unit tests (tests/test_eumon.py is CPU-only)
+├── bfm-model/            # submodule: model code, config, scaling statistics
+├── gravity-wave-finetuning/  # submodule: Prithvi-WxC experiments (optional)
+├── data/                 # raw archives (data/raw/…) and BioCube batches — not tracked
+├── weights/              # bfm-pretrain-large.ckpt — not tracked
+└── artefacts/            # everything the pipeline writes — not tracked
+```
+
+## Installation
+
+| | |
+|---|---|
+| Python | `>=3.12,<3.14` |
+| Poetry | `>=2.0` — installed into the venv by `initialize.sh` |
+| Git | submodules resolve over HTTPS; no SSH access required |
+| GPU | CUDA for the fine-tuning arms; nulls and classical baselines are CPU-only |
+
+### Quick start
 
 ```bash
-module purge
-# 3.11
-module load 2023 Python/3.11.3-GCCcore-12.3.0
-# or 3.12
-module load 2024 Python/3.12.3-GCCcore-13.3.0
+git clone --recurse-submodules https://github.com/BioDT/bfm-finetune.git
+cd bfm-finetune
+./initialize.sh
 ```
 
-### 2. Initialize everything
+`initialize.sh` is idempotent: it initialises the submodules, creates the in-project
+`.venv`, installs Poetry into it, runs `poetry install` and installs the pre-commit hooks.
+`--with-prithvi` adds the Prithvi-WxC dependency group; `--with-assets` also fetches the
+legacy task assets (large downloads — not needed for the benchmark).
 
-Run the script `./initialize.sh`.
-
-### 3. Finetuning tasks
-
-#### Install or update BFM to its latest version
-
-```
-cd bfm-model
-git pull origin
-git checkout main
-git pull
-
-OR
-
-pip install git+https://github.com/BioDT/bfm-model.git
-```
-
-
-#### Biotic Task - Species Distribution Model
-For [geolifeclef24](https://www.kaggle.com/competitions/geolifeclef-2024) dataset, you can recreate the batches with:
+### Manual setup
 
 ```bash
-python bfm_finetune/dataloaders/geolifeclef_species/batch.py
+git submodule update --init --recursive
+python3.12 -m venv .venv                 # create the venv first; Poetry then uses it
+.venv/bin/pip install --upgrade pip poetry
+.venv/bin/poetry install                 # add --with prithvi for the Prithvi-WxC experiments
 ```
 
-This will create yearly batches for all the 5016 distinct species. You can then configure in `bfm_finetune/finetune_config.yaml` how many you want to use (e.g. setting to 500, will take the 500 most frequent species).
+Poetry is configured for an in-project virtual environment (`poetry.toml`). `bfm-model`
+is installed editable from the submodule; to update it, pull inside `bfm-model/` and
+re-run `poetry install`.
 
-Keep in mind that the less frequent ones appear only in a few cells of the grid (after 1k). Also the closer you go to 5016, the highest CUDA memory you will need.
+## Data and weights
 
-- Inside the batches saved to disk, `species_distribution` has shape `[T=2, Species, H, W]`.
-
-- To train the model, you can use the script `bfm_finetune/finetune_bfm_sdm.py`.
+Every benchmark input — the three survey archives, the published indices and the
+BioAnalyst weights — is pinned by URL and SHA-256 in `bfm_finetune/eumon/download.py`:
 
 ```bash
-python bfm_finetune/finetune_bfm_sdm.py
+.venv/bin/python -m bfm_finetune.eumon.download fetch-all   # download whatever is missing
+.venv/bin/python -m bfm_finetune.eumon.download verify      # check hashes, download nothing
 ```
 
-- To visualise the predictions of the finetuned model, you can use the notebook `notebooks/geolifeclef_species.ipynb`.
+The BioCube monthly batches are expected under `data/batches_28species/`
+(override with `EUMON_BIOCUBE`). CHELSA months are window-read over HTTP on demand and
+cached under the artefacts root.
 
-#### Abiotic Task - Climate linear probing
+## Benchmark (`eumon`)
 
-For the [CHELSA](https://chelsa-climate.org/) and BFMLatents datasets, you can recreate the batches with:
+An effort-controlled biodiversity benchmark: null models and learned baselines are
+scored before any foundation model, on a four-setting ladder — L0 zero-shot, L1 calibration,
+L2 frozen probe, L3 PEFT / full fine-tune — for BioAnalyst and Aurora.
+
+Run from the repository root:
 
 ```bash
-python bfm_finetune/dataloaders/chelsa/batch.py
+.venv/bin/python scripts/run.py --list           # stages and what each one writes
+.venv/bin/python scripts/run.py all              # everything, in dependency order
+.venv/bin/python scripts/run.py l2 l3 --gpu 1    # named stages on a chosen device
+.venv/bin/python scripts/audit.py                # read-only checks; expect 0 FAIL
+.venv/bin/python scripts/preflight.py --gpu 1    # tiny end-to-end pass over every setting
 ```
-This will create yearly batches for all the 19 CHELSA variables. You can then configure in `bfm_finetune/finetune_config.yaml` for the time period you want to use (e.g. setting to 2010-2020, will take the 11 years of data), along with other parameters for the backbone and the decoder outputs.
 
-The latent variables and decoder oututs will be save as a netcdf file in the path defined in `bfm_finetune/dataloaders/chelsa/batch_config.yaml`.
+| variable | effect |
+|---|---|
+| `EUMON_ROOT` | project root for data, weights, `bfm-model` and outputs (default: this checkout) |
+| `EUMON_ARTEFACTS` | output root (default `artefacts/`, relative to `EUMON_ROOT`); redirects a whole run |
+| `EUMON_BIOCUBE` | BioCube batch directory (default `$EUMON_ROOT/data/batches_28species`) |
+| `EUMON_THREADS` | CPU thread cap applied before torch is imported (default 8) |
+| `EUMON_NO_ENERGY` | `1` skips per-card power sampling and records wall-clock only |
 
-- To train the model, you can use the script `bfm_finetune/finetune_chelsa.py`.
+Stages are idempotent: each declares its outputs, is skipped when they exist with a
+matching SHA-256, and is safe to re-run after a crash. GPU stages refuse to start on an
+occupied card unless `--allow-shared` is passed, because per-device energy measurement is
+otherwise silently corrupted.
+
+## Development
 
 ```bash
-python bfm_finetune/finetune_chelsa.py
+.venv/bin/pytest tests/test_eumon.py             # CPU-only; no data or weights needed
+.venv/bin/ruff check bfm_finetune/eumon scripts  # lint
+.venv/bin/pre-commit run --all-files             # formatting hooks
 ```
 
-- To visualise the predictions of the task, you can use the notebook `notebooks/chelsa_2010_tas_pr.ipynb`.
+## Legacy experiments
 
+Superseded by the eumon benchmark and kept for reference. They read their data root from
+`bfm_finetune/paths.py` (`STORAGE_DIR`: a Snellius project path on that cluster, otherwise
+`./data`); fetch their assets with `./initialize.sh --with-assets`.
 
-### 4. Manually run code formatting / pre-commit
+### GeoLifeCLEF-24 species distribution
+Recreate the yearly batches with `python bfm_finetune/dataloaders/geolifeclef_species/batch.py`,
+train with `python bfm_finetune/finetune_bfm_sdm.py`, and visualise predictions in
+`notebooks/geolifeclef_species.ipynb`.
 
-You can manually run the command on all the files (even if not modified) with:
+### CHELSA climate probing
+Recreate the batches with `python bfm_finetune/dataloaders/chelsa/batch.py` and train with
+`python bfm_finetune/finetune_chelsa.py`. The eumon `abiotic*` stages re-examine this
+experiment with a proper split and null battery.
 
-```bash
-pre-commit run --all-files
+### Aurora new-variable fine-tuning
+`python bfm_finetune/finetune_new_variables.py` (toy dataset via `use_toy=True`);
+multi-GPU variant in `finetune_new_variables_multi_gpu.py`, configured through
+`bfm_finetune/finetune_config.yaml`.
+
+### Prithvi-WxC gravity-wave fine-tuning
+Requires `poetry install --with prithvi`. Train with `bfm_finetune/prithvi/train.sh`,
+run inference with `bfm_finetune/prithvi/inference.sh`.
+
+### Resources
+
+- [BioAnalyst code](https://github.com/BioDT/bfm-model)
+- [BioAnalyst weights](https://huggingface.co/BioDT/bfm-pretrained)
+- [BioCube data](https://huggingface.co/datasets/BioDT/BioCube)
+- [BioCube code](https://github.com/BioDT/bfm-data)
+
+## Citation
+
+If you like our work and used it in any context, please consider citing us as follows:
+
+**BioAnalyst**
+```
+@misc{trantas2025bioanalystfoundationmodelbiodiversity,
+      title={BioAnalyst: A Foundation Model for Biodiversity}, 
+      author={Athanasios Trantas and Martino Mensio and Stylianos Stasinos and Sebastian Gribincea and Taimur Khan and Damian Podareanu and Aliene van der Veen},
+      year={2025},
+      eprint={2507.09080},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2507.09080}, 
+}
 ```
 
-## Run some finetune workflows
-
-First get some resources if you are in the cluster.
-*Note: set gpus-per-node=2 or more if you planning to be faster!*
+**BioCube**
 ```
-salloc -p gpu_h100 --gpus-per-node=1 -t 01:00:00
+@article{stasinos2025biocube,
+  title={Biocube: A multimodal dataset for biodiversity research},
+  author={Stasinos, Stylianos and Mensio, Martino and Lazovik, Elena and Trantas, Athanasios},
+  journal={arXiv preprint arXiv:2505.11568},
+  year={2025}
+}
 ```
-
-### Aurora Fine-Tune
-
-1) In an activated environment, run `python bfm_finetune/finetune_new_variables.py`.
-
-2) You can select to debug your finetune models using the toy dataset by changing the flag `finetune_new_variables(use_toy=True)`
-
-3) Uncomment either one of the 3 Versions of the models to experiment with
-
-4) You can do parallel training if your hardware supports it, by running the command `finetune_new_variables_multi_gpu.py`. You can edit the `finetune_config.yaml` to support your settings, e.g. fsdp vs ddp or the gpus ids [0,1].
-
-#### Visualise predictions
-
-You can visualise the predictions of the finetuned model by using the notebook `visualise_eval.ipynb`. Just change the **PATH** variable to map the location of your checkpoint.
-
-#### Experimentation - Work in progress
-
-An intro script with a toy example, using the small Aurora model and finetuning with the below logic is `finetune_new_variables.py`.
-
-Concept:
-- Spatiotemporal Encoder:
-The new input (with, for example, 500 channels/species) is passed through a series of convolutional layers to match the backbone's input shape.
-
-- Frozen Backbone & LoRA Finetune:
-The backbone is frozen and LoRA adapters are added to the attention heads.
-
-- Spatiotemporal Decoder:
-The backbone's output is reconstructed after a series of convolutional layer back to the coordinate grid.
-
-*NOTE: We are currently using the Aurora small for integration experiments. In the future we will adapt the codebase for using the BFM.*
-
-### Prithvi-WxC Fine-Tune
-*Experimental*
-
-In this setting, we finetune keeping frozen the Prithvi-WxC backbone and using the same U-net style encoder-decoder architecture that was used during the gravite-wave finetuning routine.
-
-Start the fine-tune training: `bfm_finetune/prithvi/train.sh`
-
-Inference: `bfm_finetune/prithvi/inference.sh`
-
-## TODOs
-
-* [x] Monitoring & Logging
-* [x] Checkpointing & Loading
-* [x] Result visualisation
-* [x] Validate new visualisations & metrics
-* [x] Compare with baselines (50%)
-* [x] Upsample to (721, 1440) earth grid in the encoder and downsample to (152, 320) in decoder. Edit the coordinates on the dataset
-* [x] Normalization on train data
-* [x] Validate way of Lat Long (H,W) processed from the model but also from our dataset/plotting functions
